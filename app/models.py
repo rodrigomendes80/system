@@ -1,0 +1,140 @@
+from datetime import date, datetime
+from decimal import Decimal
+from enum import Enum
+
+from pydantic import BaseModel, Field
+
+
+class StatusProjeto(str, Enum):
+    PLANEJAMENTO = "PLANEJAMENTO"
+    EM_ANDAMENTO = "EM_ANDAMENTO"
+    FINALIZADO = "FINALIZADO"
+
+
+class StatusTarefa(str, Enum):
+    A_FAZER = "A_FAZER"
+    EM_ANDAMENTO = "EM_ANDAMENTO"
+    BLOQUEADA = "BLOQUEADA"
+    FINALIZADA = "FINALIZADA"
+
+
+class Prioridade(str, Enum):
+    BAIXA = "BAIXA"
+    MEDIA = "MEDIA"
+    ALTA = "ALTA"
+    URGENTE = "URGENTE"
+
+
+# ---------- Tipos de serviço ----------
+
+class TipoServicoCreate(BaseModel):
+    nome: str = Field(min_length=1, max_length=120)
+    descricao: str | None = None
+
+
+class TipoServico(TipoServicoCreate):
+    id: str
+    ativo: bool
+
+
+# ---------- Clientes ----------
+
+class ServicoContratadoCreate(BaseModel):
+    tipo_servico_id: str
+    valor: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
+    data_inicio: date | None = None
+
+
+class ServicoContratado(ServicoContratadoCreate):
+    id: str
+    cliente_id: str
+    tipo_servico_nome: str
+    ativo: bool
+
+
+class ClienteBase(BaseModel):
+    nome: str = Field(min_length=1, max_length=200)
+    documento: str | None = Field(default=None, description="CPF ou CNPJ")
+    email: str | None = None
+    telefone: str | None = None
+
+
+class ClienteCreate(ClienteBase):
+    servicos: list[ServicoContratadoCreate] = []
+
+
+class ClienteUpdate(BaseModel):
+    nome: str | None = Field(default=None, min_length=1, max_length=200)
+    documento: str | None = None
+    email: str | None = None
+    telefone: str | None = None
+    ativo: bool | None = None
+
+
+class Cliente(ClienteBase):
+    id: str
+    data_cadastro: datetime
+    ativo: bool
+    servicos: list[ServicoContratado] = []
+    valor_total_servicos: Decimal = Decimal("0")
+
+
+# ---------- Projetos ----------
+
+class ProjetoCreate(BaseModel):
+    cliente_id: str
+    nome: str = Field(min_length=1, max_length=200)
+    descricao: str | None = None
+    data_prazo: date | None = None
+    status: StatusProjeto = StatusProjeto.PLANEJAMENTO
+
+
+class ProjetoUpdate(BaseModel):
+    nome: str | None = Field(default=None, min_length=1, max_length=200)
+    descricao: str | None = None
+    data_prazo: date | None = None
+    status: StatusProjeto | None = None
+
+
+class Projeto(BaseModel):
+    id: str
+    cliente_id: str
+    nome: str
+    descricao: str | None
+    status: StatusProjeto
+    data_criacao: datetime
+    data_prazo: date | None
+    data_finalizacao: datetime | None
+    total_tarefas: int = 0
+    tarefas_finalizadas: int = 0
+    percentual_concluido: float = 0.0
+
+
+# ---------- Tarefas ----------
+
+class TarefaCreate(BaseModel):
+    titulo: str = Field(min_length=1, max_length=200)
+    descricao: str | None = None
+    status: StatusTarefa = StatusTarefa.A_FAZER
+    prioridade: Prioridade = Prioridade.MEDIA
+    data_prazo: date | None = None
+
+
+class TarefaUpdate(BaseModel):
+    titulo: str | None = Field(default=None, min_length=1, max_length=200)
+    descricao: str | None = None
+    status: StatusTarefa | None = None
+    prioridade: Prioridade | None = None
+    data_prazo: date | None = None
+
+
+class Tarefa(BaseModel):
+    id: str
+    projeto_id: str
+    titulo: str
+    descricao: str | None
+    status: StatusTarefa
+    prioridade: Prioridade
+    data_criacao: datetime
+    data_prazo: date | None
+    data_finalizacao: datetime | None

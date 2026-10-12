@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "API (uvicorn)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--reload"],
+      "envFile": "${workspaceFolder}/.env",
+      "jinja": true
+    },
+    {
+      "name": "Inicializar banco",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "scripts.init_db",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+### Exemplos de uso da API (extensão "REST Client" do VS Code: clique em "Send Request")
+@base = http://localhost:8000
+
+### Tipos de serviço
+GET {{base}}/tipos-servico
+
+### Cadastrar cliente com serviços contratados (troque o tipo_servico_id)
+POST {{base}}/clientes
+Content-Type: application/json
+
+{
+  "nome": "Loja Exemplo Ltda",
+  "documento": "12.345.678/0001-90",
+  "email": "contato@lojaexemplo.com.br",
+  "servicos": [
+    { "tipo_servico_id": "COLE-O-ID-AQUI", "valor": "2500.00", "data_inicio": "2026-10-01" }
+  ]
+}
+
+### Criar projeto para o cliente
+POST {{base}}/projetos
+Content-Type: application/json
+
+{ "cliente_id": "COLE-O-ID-AQUI", "nome": "Campanha Black Friday", "data_prazo": "2026-11-28" }
+
+### Criar tarefa no projeto
+POST {{base}}/projetos/COLE-O-ID-AQUI/tarefas
+Content-Type: application/json
+
+{ "titulo": "Configurar campanhas no Meta Ads", "prioridade": "ALTA", "data_prazo": "2026-11-10" }
+
+### Finalizar tarefa
+PATCH {{base}}/tarefas/COLE-O-ID-AQUI
+Content-Type: application/json
+
+{ "status": "FINALIZADA" }
+
+### Finalizar projeto (409 se houver tarefa pendente)
+POST {{base}}/projetos/COLE-O-ID-AQUI/finalizar
