@@ -8,11 +8,11 @@ desenvolver no VS Code e publicar como **Databricks App**.
 
 | Endereço | O que mostra |
 |---|---|
-| `/` → **Projetos** | Indicadores (clientes ativos, receita contratada, projetos em aberto/atrasados), filtros por cliente e status, cards com % de conclusão |
+| `/` → **Projetos** | Indicadores (clientes ativos, receita contratada, projetos em aberto/atrasados), filtros por cliente e status, **lista ou kanban** (arraste para mudar o status; finalizar respeita a regra das tarefas), agrupamento por cliente |
 | **Projeto** | Quadro (kanban) com as tarefas por status — arraste entre colunas ou troque no seletor —, prioridade, datas, botões Finalizar/Reabrir |
 | **Clientes** | Totalizador (valor contratado, ticket médio, clientes e serviços ativos), valor por tipo de serviço, lista com total; cadastro com vários serviços |
 | **Tarefa** (clique no título) | Dados da tarefa e **histórico**: comentários para documentar o andamento + registros automáticos de mudanças (status, prioridade, prazo, projeto) |
-| **Tarefas** | Todas as tarefas em **lista ou kanban**, indicadores (para hoje, por status, atrasadas), filtros por cliente, projeto, status, prioridade e prazo (para hoje, atrasadas, próximos 7 dias); nova tarefa escolhendo cliente e projeto |
+| **Tarefas** | Todas as tarefas em **lista ou kanban**, indicadores (para hoje, por status, atrasadas), filtros por cliente, projeto, status, prioridade e prazo (para hoje, atrasadas, próximos 7 dias), agrupamento por cliente ou projeto; nova tarefa escolhendo cliente e projeto |
 | **Cliente** | Dados, serviços (contratar/encerrar) e projetos do cliente |
 | `/docs` | Documentação e testes da API |
 

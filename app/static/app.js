@@ -105,6 +105,111 @@ function abrirFormulario(titulo, corpoHtml, onSubmit, aoAbrir, { botao = "Salvar
 
 const campo = (label, input) => `<div class="field"><label>${label}</label>${input}</div>`;
 
+// ---------- Visualização: lista/kanban e agrupamento ----------
+
+const pref = (chave, padrao) => {
+  try {
+    return localStorage.getItem(chave) ?? padrao;
+  } catch {
+    return padrao;
+  }
+};
+const salvarPref = (chave, valor) => {
+  try {
+    localStorage.setItem(chave, valor);
+  } catch {}
+};
+
+function seletorVisao(atual) {
+  return `<div class="segmented" role="group" aria-label="Visualização">
+    <button class="${atual === "lista" ? "on" : ""}" data-visao="lista">☰ Lista</button>
+    <button class="${atual === "kanban" ? "on" : ""}" data-visao="kanban">▦ Kanban</button>
+  </div>`;
+}
+
+function seletorAgrupar(atual, opcoes) {
+  return `<select id="agrupar" title="Agrupar">
+    <option value="">Sem agrupamento</option>
+    ${Object.entries(opcoes)
+      .map(([v, rotulo]) => `<option value="${v}" ${v === atual ? "selected" : ""}>${rotulo}</option>`)
+      .join("")}
+  </select>`;
+}
+
+/** Liga os controles de visão e agrupamento, salvando a escolha no navegador. */
+function ligarVisao(prefVisao, prefAgrupar, aoMudar) {
+  $app.querySelectorAll("[data-visao]").forEach(
+    (el) => (el.onclick = () => (salvarPref(prefVisao, el.dataset.visao), aoMudar()))
+  );
+  const agrupar = document.getElementById("agrupar");
+  if (agrupar) agrupar.onchange = () => (salvarPref(prefAgrupar, agrupar.value), aoMudar());
+}
+
+/** Agrupa itens por chave; grupos em ordem alfabética, com os "sem grupo" por último. */
+function agrupar(itens, chave, titulo, link) {
+  const grupos = new Map();
+  for (const item of itens) {
+    const k = chave(item) ?? "";
+    if (!grupos.has(k)) grupos.set(k, { chave: k, titulo: titulo(item), link: link(item), itens: [] });
+    grupos.get(k).itens.push(item);
+  }
+  return [...grupos.values()].sort((a, b) =>
+    !a.chave ? 1 : !b.chave ? -1 : a.titulo.localeCompare(b.titulo, "pt-BR")
+  );
+}
+
+const tituloGrupo = (g) =>
+  `${g.link ? `<a href="${g.link}">${esc(g.titulo)}</a>` : esc(g.titulo)} <span class="muted">· ${g.itens.length}</span>`;
+
+/** Linhas de tabela com cabeçalho por grupo (ou sem grupos). */
+function linhasAgrupadas(grupos, colunas, linha) {
+  return grupos
+    .map(
+      (g) =>
+        (g.titulo !== null ? `<tr class="grupo"><td colspan="${colunas}">${tituloGrupo(g)}</td></tr>` : "") +
+        g.itens.map(linha).join("")
+    )
+    .join("");
+}
+
+/** Um quadro kanban por grupo. */
+function quadrosAgrupados(grupos, quadro) {
+  return grupos
+    .map((g) =>
+      g.titulo !== null
+        ? `<section class="grupo-kanban"><h3>${tituloGrupo(g)}</h3>${quadro(g.itens)}</section>`
+        : quadro(g.itens)
+    )
+    .join("");
+}
+
+const semGrupo = (itens) => [{ chave: "", titulo: null, link: null, itens }];
+
+/** Arrastar cartões entre colunas do kanban; aoSoltar(id, colunaDestino). */
+function ligarArrastar(aoSoltar) {
+  $app.querySelectorAll('[draggable="true"][data-id]').forEach(
+    (el) => (el.ondragstart = (e) => e.dataTransfer.setData("text/plain", el.dataset.id))
+  );
+  $app.querySelectorAll("[data-coluna]").forEach((col) => {
+    col.ondragover = (e) => (e.preventDefault(), col.classList.add("drop"));
+    col.ondragleave = () => col.classList.remove("drop");
+    col.ondrop = (e) => {
+      e.preventDefault();
+      col.classList.remove("drop");
+      const id = e.dataTransfer.getData("text/plain");
+      if (id) aoSoltar(id, col.dataset.coluna);
+    };
+  });
+}
+
+/** Arrastar tarefas muda o status. */
+function arrastarTarefas(porId) {
+  ligarArrastar((tid, status) => {
+    if (porId[tid] && porId[tid].status !== status)
+      acao(() => api(`/tarefas/${tid}`, { method: "PATCH", body: { status } }));
+  });
+}
+
 // ---------- Projetos ----------
 
 const filtros = { cliente_id: "", status: "" };
@@ -141,7 +246,17 @@ function formProjeto(clientes, p = {}) {
   );
 }
 
+/** Arrastar projeto entre colunas: finalizar aplica a regra das tarefas; sair de Finalizado reabre. */
+async function moverProjeto(p, destino) {
+  if (destino === "FINALIZADO") return api(`/projetos/${p.id}/finalizar`, { method: "POST" });
+  if (p.status === "FINALIZADO") await api(`/projetos/${p.id}/reabrir`, { method: "POST" });
+  if (destino !== "EM_ANDAMENTO" || p.status !== "FINALIZADO")
+    await api(`/projetos/${p.id}`, { method: "PATCH", body: { status: destino } });
+}
+
 async function viewProjetos() {
+  const visao = pref("visaoProjetos", "lista");
+  const agruparPor = pref("agruparProjetos", "");
   const qs = new URLSearchParams(Object.entries(filtros).filter(([, v]) => v)).toString();
   const [clientes, projetos, todos] = await Promise.all([
     api("/clientes"),
@@ -152,15 +267,52 @@ async function viewProjetos() {
   const ativos = clientes.filter((c) => c.ativo);
   const receita = ativos.reduce((s, c) => s + Number(c.valor_total_servicos), 0);
   const abertos = todos.filter((p) => p.status !== "FINALIZADO");
+  const grupos =
+    agruparPor === "cliente"
+      ? agrupar(projetos, (p) => p.cliente_id, (p) => nomes[p.cliente_id] ?? "", (p) => `#/clientes/${p.cliente_id}`)
+      : semGrupo(projetos);
+
+  const linhaProjeto = (p) => {
+    const finalizado = p.status === "FINALIZADO";
+    return `<tr class="clickable" data-abrir="#/projetos/${p.id}">
+      <td><a href="#/projetos/${p.id}"><strong>${esc(p.nome)}</strong></a></td>
+      <td class="nowrap"><a href="#/clientes/${p.cliente_id}">${esc(nomes[p.cliente_id])}</a></td>
+      <td>${badge(STATUS_PROJETO, p.status)}</td>
+      <td style="min-width:160px">
+        <div class="progress ${finalizado ? "done" : ""}"><span style="width:${p.percentual_concluido}%"></span></div>
+        <div class="small muted">${p.tarefas_finalizadas}/${p.total_tarefas} tarefas · ${p.percentual_concluido}%</div>
+      </td>
+      <td class="nowrap ${atrasada(p.data_prazo, finalizado) ? "late" : ""}">${fmtData(p.data_prazo)}</td>
+      <td class="nowrap small">${fmtDataHora(p.data_criacao)}</td>
+      <td class="nowrap small">${fmtDataHora(p.data_finalizacao)}</td>
+    </tr>`;
+  };
+  const quadroProjetos = (itens) =>
+    `<div class="board cols-3">${Object.entries(STATUS_PROJETO)
+      .map(([status, [label]]) => {
+        const doStatus = itens.filter((p) => p.status === status);
+        return `<div class="column" data-coluna="${status}">
+          <h3><span>${label}</span><span>${doStatus.length}</span></h3>
+          ${
+            doStatus
+              .map(
+                (p) =>
+                  `<div class="drag-card" draggable="true" data-id="${p.id}">${cardProjeto(p, nomes[p.cliente_id]).replace(
+                    '<a class="card"',
+                    '<a class="card" draggable="false"'
+                  )}</div>`
+              )
+              .join("") || '<p class="small muted" style="padding:0 4px">Nenhum projeto</p>'
+          }
+        </div>`;
+      })
+      .join("")}</div>`;
 
   $app.innerHTML = `
     <div class="page-head">
       <h1>Projetos</h1>
       <div class="toolbar">
-        <select id="f-cliente"><option value="">Todos os clientes</option>${clientes
-          .map((c) => `<option value="${c.id}" ${c.id === filtros.cliente_id ? "selected" : ""}>${esc(c.nome)}</option>`)
-          .join("")}</select>
-        <select id="f-status"><option value="">Todos os status</option>${options(STATUS_PROJETO, filtros.status)}</select>
+        ${seletorVisao(visao)}
         <button class="btn primary" id="novo-projeto" ${ativos.length ? "" : "disabled title='Cadastre um cliente primeiro'"}>+ Novo projeto</button>
       </div>
     </div>
@@ -172,14 +324,36 @@ async function viewProjetos() {
         abertos.filter((p) => atrasada(p.data_prazo, false)).length
       }</div></div>
     </div>
+    <div class="filters">
+      <select id="f-cliente"><option value="">Todos os clientes</option>${clientes
+        .map((c) => `<option value="${c.id}" ${c.id === filtros.cliente_id ? "selected" : ""}>${esc(c.nome)}</option>`)
+        .join("")}</select>
+      <select id="f-status"><option value="">Todos os status</option>${options(STATUS_PROJETO, filtros.status)}</select>
+      ${seletorAgrupar(agruparPor, { cliente: "Agrupar por cliente" })}
+    </div>
     ${
-      projetos.length
-        ? `<div class="grid">${projetos.map((p) => cardProjeto(p, nomes[p.cliente_id])).join("")}</div>`
-        : `<div class="panel empty">Nenhum projeto encontrado.</div>`
+      !projetos.length
+        ? `<div class="panel empty">Nenhum projeto encontrado.</div>`
+        : visao === "kanban"
+        ? quadrosAgrupados(grupos, quadroProjetos)
+        : `<div class="panel table-wrap" style="padding:0"><table>
+            <thead><tr><th>Projeto</th><th>Cliente</th><th>Status</th><th>Progresso</th><th>Prazo</th><th>Criado</th><th>Finalizado</th></tr></thead>
+            <tbody>${linhasAgrupadas(grupos, 7, linhaProjeto)}</tbody>
+          </table></div>`
     }`;
 
   document.getElementById("f-cliente").onchange = (e) => ((filtros.cliente_id = e.target.value), render());
   document.getElementById("f-status").onchange = (e) => ((filtros.status = e.target.value), render());
+  ligarVisao("visaoProjetos", "agruparProjetos", render);
+  $app.querySelectorAll("tr[data-abrir]").forEach(
+    (tr) => (tr.onclick = (e) => !e.target.closest("a") && (location.hash = tr.dataset.abrir))
+  );
+  const porId = Object.fromEntries(projetos.map((p) => [p.id, p]));
+  ligarArrastar((pid, destino) => {
+    const p = porId[pid];
+    if (p && p.status !== destino)
+      acao(() => moverProjeto(p, destino), destino === "FINALIZADO" ? "Projeto finalizado!" : null);
+  });
   document.getElementById("novo-projeto").onclick = () =>
     abrirFormulario("Novo projeto", formProjeto(clientes), async (d) => {
       const p = await api("/projetos", { method: "POST", body: d });
@@ -319,24 +493,6 @@ function quadroTarefas(tarefas, bloqueada, comOrigem = false) {
     .join("")}</div>`;
 }
 
-/** Permite arrastar tarefas entre as colunas do quadro para mudar o status. */
-function ligarArrastar(porId) {
-  $app.querySelectorAll('.task[draggable="true"]').forEach(
-    (el) => (el.ondragstart = (e) => e.dataTransfer.setData("text/plain", el.dataset.id))
-  );
-  $app.querySelectorAll("[data-coluna]").forEach((col) => {
-    col.ondragover = (e) => (e.preventDefault(), col.classList.add("drop"));
-    col.ondragleave = () => col.classList.remove("drop");
-    col.ondrop = (e) => {
-      e.preventDefault();
-      col.classList.remove("drop");
-      const tid = e.dataTransfer.getData("text/plain");
-      if (tid && porId[tid] && porId[tid].status !== col.dataset.coluna)
-        acao(() => api(`/tarefas/${tid}`, { method: "PATCH", body: { status: col.dataset.coluna } }));
-    };
-  });
-}
-
 /** Liga os botões/seletores de status, edição e exclusão de tarefas na tela atual. */
 function ligarAcoesTarefas(tarefas) {
   const porId = Object.fromEntries(tarefas.map((t) => [t.id, t]));
@@ -404,7 +560,7 @@ async function viewProjeto(id) {
     </div>
     ${quadroTarefas(tarefas, () => finalizado)}`;
 
-  ligarArrastar(ligarAcoesTarefas(tarefas));
+  arrastarTarefas(ligarAcoesTarefas(tarefas));
 
   if (finalizado) {
     document.getElementById("reabrir").onclick = () =>
@@ -704,11 +860,6 @@ async function viewCliente(id) {
 const filtrosTarefas = { cliente_id: "", projeto_id: "", status: "", prioridade: "", prazo: "" };
 const PRAZOS = { hoje: ["Para hoje"], atrasadas: ["Atrasadas"], semana: ["Próximos 7 dias"] };
 
-// Modo de visualização lembrado no navegador (lista ou kanban)
-let visaoTarefas = "lista";
-try {
-  visaoTarefas = localStorage.getItem("visaoTarefas") || "lista";
-} catch {}
 
 function somarDias(dias) {
   const d = new Date();
@@ -717,6 +868,8 @@ function somarDias(dias) {
 }
 
 async function viewTarefas() {
+  const visaoTarefas = pref("visaoTarefas", "lista");
+  const agruparPor = pref("agruparTarefas", "");
   const f = filtrosTarefas;
   const params = Object.entries(f).filter(([k, v]) => v && k !== "prazo");
   const qs = new URLSearchParams(
@@ -738,15 +891,23 @@ async function viewTarefas() {
   const projetosFiltro = projetos.filter((p) => !f.cliente_id || p.cliente_id === f.cliente_id);
   const opt = (lista, sel) =>
     lista.map((x) => `<option value="${x.id}" ${x.id === sel ? "selected" : ""}>${esc(x.nome)}</option>`).join("");
+  const grupos =
+    agruparPor === "cliente"
+      ? agrupar(tarefas, (t) => t.cliente_id, (t) => t.cliente_nome, (t) => `#/clientes/${t.cliente_id}`)
+      : agruparPor === "projeto"
+      ? agrupar(
+          tarefas,
+          (t) => t.projeto_id,
+          (t) => (t.projeto_id ? `${t.projeto_nome} — ${t.cliente_nome}` : "Sem projeto"),
+          (t) => (t.projeto_id ? `#/projetos/${t.projeto_id}` : null)
+        )
+      : semGrupo(tarefas);
 
   $app.innerHTML = `
     <div class="page-head">
       <h1>Tarefas</h1>
       <div class="toolbar">
-        <div class="segmented" role="group" aria-label="Visualização">
-          <button class="${visaoTarefas === "lista" ? "on" : ""}" data-visao="lista">☰ Lista</button>
-          <button class="${visaoTarefas === "kanban" ? "on" : ""}" data-visao="kanban">▦ Kanban</button>
-        </div>
+        ${seletorVisao(visaoTarefas)}
         <button class="btn primary" id="nova-tarefa">+ Nova tarefa</button>
       </div>
     </div>
@@ -768,11 +929,12 @@ async function viewTarefas() {
       <select id="ft-status"><option value="">Todos os status</option>${options(STATUS_TAREFA, f.status)}</select>
       <select id="ft-prioridade"><option value="">Todas as prioridades</option>${options(PRIORIDADE, f.prioridade)}</select>
       <select id="ft-prazo"><option value="">Todos os prazos</option>${options(PRAZOS, f.prazo)}</select>
+      ${seletorAgrupar(agruparPor, { cliente: "Agrupar por cliente", projeto: "Agrupar por projeto" })}
       ${Object.values(f).some(Boolean) ? '<button class="btn ghost sm" id="ft-limpar">Limpar filtros</button>' : ""}
     </div>
     ${
       visaoTarefas === "kanban"
-        ? quadroTarefas(tarefas, bloqueada, true)
+        ? quadrosAgrupados(grupos, (itens) => quadroTarefas(itens, bloqueada, true))
         : `<div class="panel table-wrap" style="padding:0">
       <table>
         <thead><tr>
@@ -780,8 +942,7 @@ async function viewTarefas() {
           <th>Prazo</th><th>Criada</th><th>Finalizada</th><th></th>
         </tr></thead>
         <tbody>${
-          tarefas
-            .map((t) => {
+          linhasAgrupadas(grupos, 9, (t) => {
               const travada = bloqueada(t);
               return `<tr>
               <td><a class="link-tarefa" href="#/tarefas/${t.id}"><strong>${esc(t.titulo)}</strong></a>
@@ -803,8 +964,7 @@ async function viewTarefas() {
                 <button class="btn sm danger" data-excluir="${t.id}" ${travada ? "disabled" : ""}>Excluir</button>
               </td>
             </tr>`;
-            })
-            .join("") || `<tr><td colspan="9" class="empty">Nenhuma tarefa encontrada.</td></tr>`
+            }) || `<tr><td colspan="9" class="empty">Nenhuma tarefa encontrada.</td></tr>`
         }</tbody>
       </table>
     </div>`
@@ -828,18 +988,9 @@ async function viewTarefas() {
   $app.querySelectorAll("[data-prazo]").forEach(
     (el) => (el.onclick = () => ((f.prazo = f.prazo === el.dataset.prazo ? "" : el.dataset.prazo), render()))
   );
-  $app.querySelectorAll("[data-visao]").forEach(
-    (el) =>
-      (el.onclick = () => {
-        visaoTarefas = el.dataset.visao;
-        try {
-          localStorage.setItem("visaoTarefas", visaoTarefas);
-        } catch {}
-        render();
-      })
-  );
+  ligarVisao("visaoTarefas", "agruparTarefas", render);
   document.getElementById("nova-tarefa").onclick = () => abrirNovaTarefa();
-  ligarArrastar(ligarAcoesTarefas(tarefas));
+  arrastarTarefas(ligarAcoesTarefas(tarefas));
 }
 
 // ---------- Detalhe da tarefa e histórico ----------
