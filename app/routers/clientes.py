@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
 from app.db.base import Database
 from app.deps import get_db
@@ -10,6 +10,7 @@ from app.models import (
     ServicoContratadoCreate,
     TipoServico,
     TipoServicoCreate,
+    VinculosCliente,
 )
 from app.services import ClienteService, ProjetoService, TipoServicoService
 
@@ -49,6 +50,19 @@ def atualizar_cliente(cliente_id: str, dados: ClienteUpdate, db: Database = Depe
 @router.post("/clientes/{cliente_id}/servicos", response_model=Cliente, status_code=status.HTTP_201_CREATED)
 def adicionar_servico(cliente_id: str, dados: ServicoContratadoCreate, db: Database = Depends(get_db)):
     return ClienteService(db).adicionar_servico(cliente_id, dados)
+
+
+@router.get("/clientes/{cliente_id}/vinculos", response_model=VinculosCliente)
+def vinculos_cliente(cliente_id: str, db: Database = Depends(get_db)):
+    """Quantos serviços, projetos, tarefas e comentários seriam apagados com o cliente."""
+    return ClienteService(db).vinculos(cliente_id)
+
+
+@router.delete("/clientes/{cliente_id}", status_code=status.HTTP_204_NO_CONTENT)
+def excluir_cliente(cliente_id: str, cascata: bool = False, db: Database = Depends(get_db)):
+    """Exclui o cliente de forma definitiva. Com projetos/tarefas, exige `cascata=true`."""
+    ClienteService(db).excluir(cliente_id, cascata)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete("/clientes/{cliente_id}/servicos/{servico_id}", response_model=Cliente)

@@ -8,6 +8,7 @@ from app.models import (
     Cliente,
     ClienteCreate,
     ClienteUpdate,
+    VinculosCliente,
     ComentarioCreate,
     RegistroHistorico,
     Projeto,
@@ -124,6 +125,21 @@ class ClienteService:
         self._validar_tipo_servico(dados.tipo_servico_id)
         self._inserir_servico(cliente_id, dados)
         return self.obter(cliente_id)
+
+    def vinculos(self, cliente_id: str) -> VinculosCliente:
+        self.obter(cliente_id)
+        return VinculosCliente(**{k: int(v or 0) for k, v in self.repo.contar_vinculos(cliente_id).items()})
+
+    def excluir(self, cliente_id: str, cascata: bool = False) -> None:
+        """Exclui o cliente. Se ele tiver projetos ou tarefas, exige cascata=True,
+        que apaga também projetos, tarefas e o histórico delas."""
+        vinculos = self.vinculos(cliente_id)
+        if (vinculos.projetos or vinculos.tarefas) and not cascata:
+            raise RegraDeNegocioViolada(
+                f"O cliente possui {vinculos.projetos} projeto(s) e {vinculos.tarefas} tarefa(s). "
+                "Confirme a exclusão de tudo ou inative o cliente para manter o histórico."
+            )
+        self.repo.excluir_com_vinculos(cliente_id)
 
     def encerrar_servico(self, cliente_id: str, servico_id: str) -> Cliente:
         servico = self.repo.obter_servico(servico_id)

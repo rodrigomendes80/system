@@ -264,3 +264,42 @@ def test_excluir_tarefa_remove_historico(client, projeto_id):
     client.post(f"/tarefas/{t['id']}/comentarios", json={"texto": "x"})
     assert client.delete(f"/tarefas/{t['id']}").status_code == 204
     assert client.get(f"/tarefas/{t['id']}/historico").status_code == 404
+
+
+def test_excluir_cliente_sem_vinculos(client, tipo_servico_id):
+    c = client.post(
+        "/clientes", json={"nome": "Só serviço", "servicos": [{"tipo_servico_id": tipo_servico_id, "valor": "10"}]}
+    ).json()
+    assert client.get(f"/clientes/{c['id']}/vinculos").json() == {
+        "servicos": 1, "projetos": 0, "tarefas": 0, "comentarios": 0
+    }
+    assert client.delete(f"/clientes/{c['id']}").status_code == 204
+    assert client.get(f"/clientes/{c['id']}").status_code == 404
+
+
+def test_excluir_cliente_com_vinculos_exige_cascata(client, cliente_id, projeto_id):
+    t = client.post(f"/projetos/{projeto_id}/tarefas", json={"titulo": "T"}).json()
+    client.post("/tarefas", json={"cliente_id": cliente_id, "titulo": "Avulsa"})
+    client.post(f"/tarefas/{t['id']}/comentarios", json={"texto": "nota"})
+    assert client.get(f"/clientes/{cliente_id}/vinculos").json() == {
+        "servicos": 1, "projetos": 1, "tarefas": 2, "comentarios": 1
+    }
+
+    resp = client.delete(f"/clientes/{cliente_id}")
+    assert resp.status_code == 409
+    assert "1 projeto(s) e 2 tarefa(s)" in resp.json()["detail"]
+    assert client.get(f"/clientes/{cliente_id}").status_code == 200  # nada foi apagado
+
+    assert client.delete(f"/clientes/{cliente_id}?cascata=true").status_code == 204
+    assert client.get(f"/clientes/{cliente_id}").status_code == 404
+    assert client.get(f"/projetos/{projeto_id}").status_code == 404
+    assert client.get(f"/tarefas/{t['id']}").status_code == 404
+    assert client.get("/tarefas").json() == []
+
+
+def test_excluir_cliente_nao_afeta_outros(client, cliente_id):
+    outro = client.post("/clientes", json={"nome": "Outro"}).json()["id"]
+    p = client.post("/projetos", json={"cliente_id": outro, "nome": "P"}).json()["id"]
+    client.post(f"/projetos/{p}/tarefas", json={"titulo": "Fica"})
+    client.delete(f"/clientes/{cliente_id}?cascata=true")
+    assert [t["titulo"] for t in client.get("/tarefas").json()] == ["Fica"]

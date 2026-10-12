@@ -53,7 +53,10 @@ O cliente retorna também `valor_total_servicos` (soma dos serviços ativos) e o
    criação e mudanças. Registros automáticos não podem ser excluídos; comentários podem. Comentários
    são permitidos mesmo em tarefas de projeto finalizado. No Databricks App o autor é preenchido
    com o e-mail do usuário logado.
-6. Serviços contratados não são apagados: ao encerrar, ficam inativos (histórico preservado)
+6. **Excluir cliente** é definitivo. Sem projetos/tarefas, basta confirmar; com projetos ou tarefas,
+   a API exige `cascata=true` (a tela pede para digitar o nome do cliente) e apaga também serviços,
+   projetos, tarefas e o histórico delas. Para manter o histórico, prefira inativar.
+7. Serviços contratados não são apagados: ao encerrar, ficam inativos (histórico preservado)
    e saem do valor total.
 
 As regras ficam em [`app/services.py`](app/services.py).
@@ -128,6 +131,8 @@ Os testes usam SQLite em memória e cobrem as regras acima.
 | GET/POST | `/tipos-servico` | Catálogo de tipos de serviço |
 | GET/POST | `/clientes` | Lista (filtro `ativo`) / cadastra cliente (com serviços) |
 | GET/PATCH | `/clientes/{id}` | Consulta / altera cliente (inclusive inativar) |
+| GET | `/clientes/{id}/vinculos` | Quantos serviços, projetos, tarefas e comentários o cliente tem |
+| DELETE | `/clientes/{id}` | Exclui o cliente (`cascata=true` para apagar também projetos e tarefas) |
 | POST | `/clientes/{id}/servicos` | Contrata novo serviço |
 | DELETE | `/clientes/{id}/servicos/{servico_id}` | Encerra serviço (mantém histórico) |
 | GET | `/clientes/{id}/projetos` | Projetos do cliente |

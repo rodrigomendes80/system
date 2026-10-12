@@ -73,6 +73,34 @@ class ClienteRepository:
     def atualizar_servico(self, servico_id: str, values: dict[str, Any]) -> None:
         self.db.update("cliente_servicos", servico_id, values)
 
+    def contar_vinculos(self, cliente_id: str) -> Row:
+        t = self.db.table
+        return self.db.fetch_one(
+            f"""
+            SELECT
+              (SELECT COUNT(*) FROM {t('cliente_servicos')} WHERE cliente_id = :id) AS servicos,
+              (SELECT COUNT(*) FROM {t('projetos')} WHERE cliente_id = :id) AS projetos,
+              (SELECT COUNT(*) FROM {t('tarefas')} WHERE cliente_id = :id) AS tarefas,
+              (SELECT COUNT(*) FROM {t('tarefa_historico')} h
+                 JOIN {t('tarefas')} tf ON tf.id = h.tarefa_id
+                WHERE tf.cliente_id = :id AND h.tipo = 'COMENTARIO') AS comentarios
+            """,
+            {"id": cliente_id},
+        )
+
+    def excluir_com_vinculos(self, cliente_id: str) -> None:
+        """Remove o cliente e tudo que pertence a ele (ordem respeita as chaves estrangeiras)."""
+        t, p = self.db.table, {"id": cliente_id}
+        self.db.execute(
+            f"DELETE FROM {t('tarefa_historico')} WHERE tarefa_id IN "
+            f"(SELECT id FROM {t('tarefas')} WHERE cliente_id = :id)",
+            p,
+        )
+        self.db.execute(f"DELETE FROM {t('tarefas')} WHERE cliente_id = :id", p)
+        self.db.execute(f"DELETE FROM {t('projetos')} WHERE cliente_id = :id", p)
+        self.db.execute(f"DELETE FROM {t('cliente_servicos')} WHERE cliente_id = :id", p)
+        self.db.execute(f"DELETE FROM {t('clientes')} WHERE id = :id", p)
+
 
 class ProjetoRepository:
     def __init__(self, db: Database):

@@ -78,9 +78,12 @@ async function acao(fn, sucesso) {
 }
 
 /** Abre um formulário em modal. onSubmit(dados, form) deve lançar erro para manter o modal aberto. */
-function abrirFormulario(titulo, corpoHtml, onSubmit, aoAbrir) {
+function abrirFormulario(titulo, corpoHtml, onSubmit, aoAbrir, { botao = "Salvar", perigo = false } = {}) {
   const dialog = document.getElementById("modal");
   const form = document.getElementById("modal-form");
+  const submit = document.getElementById("modal-submit");
+  submit.textContent = botao;
+  submit.className = `btn ${perigo ? "danger-solid" : "primary"}`;
   document.getElementById("modal-title").textContent = titulo;
   document.getElementById("modal-body").innerHTML = corpoHtml;
   form.onsubmit = async (ev) => {
@@ -476,6 +479,48 @@ function novoTipoServico() {
   );
 }
 
+/** Exclui o cliente. Com projetos/tarefas, mostra o que será apagado e pede o nome como confirmação. */
+async function excluirCliente(c) {
+  const v = await api(`/clientes/${c.id}/vinculos`);
+  const sair = () => {
+    toast(`Cliente "${c.nome}" excluído`, true);
+    if (location.hash === "#/clientes") render();
+    else location.hash = "#/clientes";
+  };
+  if (!v.projetos && !v.tarefas) {
+    if (!confirm(`Excluir o cliente "${c.nome}"${v.servicos ? ` e seus ${v.servicos} serviço(s)` : ""}? Esta ação não pode ser desfeita.`))
+      return;
+    await api(`/clientes/${c.id}`, { method: "DELETE" });
+    return sair();
+  }
+  const item = (n, txt) => (n ? `<li><strong>${n}</strong> ${txt}</li>` : "");
+  abrirFormulario(
+    "Excluir cliente",
+    `<div class="alerta">
+       <p><strong>Esta ação não pode ser desfeita.</strong> Junto com <strong>${esc(c.nome)}</strong> serão apagados:</p>
+       <ul>
+         ${item(v.servicos, "serviço(s) contratado(s)")}
+         ${item(v.projetos, "projeto(s)")}
+         ${item(v.tarefas, "tarefa(s)")}
+         ${item(v.comentarios, "comentário(s) do histórico")}
+       </ul>
+       <p class="small">Para manter o histórico, use <strong>Inativar</strong> em vez de excluir.</p>
+     </div>` +
+      campo(
+        `Digite <strong>${esc(c.nome)}</strong> para confirmar`,
+        `<input name="confirmacao" required autocomplete="off">`
+      ),
+    async ({ confirmacao }) => {
+      if ((confirmacao || "").trim() !== c.nome.trim()) throw new Error("O nome digitado não confere com o do cliente.");
+      await api(`/clientes/${c.id}?cascata=true`, { method: "DELETE" });
+      toast(`Cliente "${c.nome}" e seus dados foram excluídos`, true);
+      if (location.hash !== "#/clientes") location.hash = "#/clientes";
+    },
+    null,
+    { botao: "Excluir definitivamente", perigo: true }
+  );
+}
+
 async function viewClientes() {
   const clientes = await api("/clientes");
   const ativos = clientes.filter((c) => c.ativo);
@@ -525,7 +570,7 @@ async function viewClientes() {
     }
     <div class="panel table-wrap" style="padding:0">
       <table>
-        <thead><tr><th>Cliente</th><th>Cadastro</th><th>Serviços contratados</th><th class="num">Valor total</th><th>Status</th></tr></thead>
+        <thead><tr><th>Cliente</th><th>Cadastro</th><th>Serviços contratados</th><th class="num">Valor total</th><th>Status</th><th></th></tr></thead>
         <tbody>
           ${
             clientes
@@ -541,14 +586,15 @@ async function viewClientes() {
             }</div></td>
             <td class="num"><strong>${brl.format(c.valor_total_servicos)}</strong></td>
             <td>${c.ativo ? '<span class="badge b-ok">Ativo</span>' : '<span class="badge">Inativo</span>'}</td>
+            <td class="num"><button class="btn sm danger" data-excluir-cliente="${c.id}">Excluir</button></td>
           </tr>`
               )
-              .join("") || `<tr><td colspan="5" class="empty">Nenhum cliente cadastrado.</td></tr>`
+              .join("") || `<tr><td colspan="6" class="empty">Nenhum cliente cadastrado.</td></tr>`
           }
         </tbody>
         ${
           clientes.length
-            ? `<tfoot><tr><th colspan="3">Total — clientes ativos</th><th class="num">${brl.format(total)}</th><th></th></tr></tfoot>`
+            ? `<tfoot><tr><th colspan="3">Total — clientes ativos</th><th class="num">${brl.format(total)}</th><th colspan="2"></th></tr></tfoot>`
             : ""
         }
       </table>
@@ -556,6 +602,14 @@ async function viewClientes() {
   document.getElementById("novo-cliente").onclick = novoCliente;
   document.getElementById("novo-tipo").onclick = novoTipoServico;
   $app.querySelectorAll("tr[data-id]").forEach((tr) => (tr.onclick = () => (location.hash = `#/clientes/${tr.dataset.id}`)));
+  $app.querySelectorAll("[data-excluir-cliente]").forEach(
+    (el) =>
+      (el.onclick = (e) => {
+        e.stopPropagation(); // não abrir o cliente ao clicar em Excluir
+        const c = clientes.find((x) => x.id === el.dataset.excluirCliente);
+        excluirCliente(c).catch((err) => toast(err.message));
+      })
+  );
 }
 
 async function viewCliente(id) {
@@ -579,6 +633,7 @@ async function viewCliente(id) {
       <div class="toolbar">
         <button class="btn" id="editar">Editar</button>
         <button class="btn" id="ativo">${c.ativo ? "Inativar" : "Reativar"}</button>
+        <button class="btn danger" id="excluir-cliente">Excluir</button>
       </div>
     </div>
     <div class="kpis">
@@ -617,6 +672,7 @@ async function viewCliente(id) {
 
   document.getElementById("editar").onclick = () =>
     abrirFormulario("Editar cliente", formCliente(c), (d) => api(`/clientes/${id}`, { method: "PATCH", body: d }));
+  document.getElementById("excluir-cliente").onclick = () => excluirCliente(c).catch((e) => toast(e.message));
   document.getElementById("ativo").onclick = () =>
     acao(() => api(`/clientes/${id}`, { method: "PATCH", body: { ativo: !c.ativo } }));
   document.getElementById("add-servico").onclick = () =>

@@ -83,6 +83,15 @@ class ClienteUpdate(BaseModel):
     ativo: bool | None = None
 
 
+class VinculosCliente(BaseModel):
+    """O que será apagado junto com o cliente."""
+
+    servicos: int
+    projetos: int
+    tarefas: int
+    comentarios: int
+
+
 class Cliente(ClienteBase):
     id: str
     data_cadastro: DataHora
