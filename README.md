@@ -10,7 +10,8 @@ desenvolver no VS Code e publicar como **Databricks App**.
 |---|---|
 | `/` → **Projetos** | Indicadores (clientes ativos, receita contratada, projetos em aberto/atrasados), filtros por cliente e status, cards com % de conclusão |
 | **Projeto** | Quadro (kanban) com as tarefas por status — arraste entre colunas ou troque no seletor —, prioridade, datas, botões Finalizar/Reabrir |
-| **Clientes** | Lista com serviços contratados e valor total; cadastro com vários serviços |
+| **Clientes** | Totalizador (valor contratado, ticket médio, clientes e serviços ativos), valor por tipo de serviço, lista com total; cadastro com vários serviços |
+| **Tarefas** | Todas as tarefas com cliente e projeto, indicadores por status e atrasadas, filtros; nova tarefa escolhendo cliente e projeto |
 | **Cliente** | Dados, serviços (contratar/encerrar) e projetos do cliente |
 | `/docs` | Documentação e testes da API |
 
@@ -128,6 +129,7 @@ Os testes usam SQLite em memória e cobrem as regras acima.
 | POST | `/projetos/{id}/finalizar` | Finaliza (só se todas as tarefas estiverem finalizadas) |
 | POST | `/projetos/{id}/reabrir` | Reabre projeto finalizado |
 | GET/POST | `/projetos/{id}/tarefas` | Lista (filtros `status`, `prioridade`) / cria tarefa |
+| GET | `/tarefas` | Todas as tarefas com projeto e cliente (filtros `cliente_id`, `projeto_id`, `status`, `prioridade`) |
 | GET/PATCH/DELETE | `/tarefas/{id}` | Consulta / altera / exclui tarefa |
 
 ## Estrutura

@@ -214,6 +214,70 @@ function formTarefa(t = {}) {
   );
 }
 
+/** Nova tarefa escolhendo cliente e projeto (somente projetos não finalizados). */
+async function abrirNovaTarefa(pre = {}) {
+  const [clientes, projetos] = await Promise.all([api("/clientes"), api("/projetos")]);
+  const abertos = projetos.filter((p) => p.status !== "FINALIZADO");
+  const comProjeto = clientes.filter((c) => abertos.some((p) => p.cliente_id === c.id));
+  if (!comProjeto.length) {
+    toast("Não há projetos em aberto. Crie um projeto antes de cadastrar tarefas.");
+    return;
+  }
+  const clienteInicial = comProjeto.some((c) => c.id === pre.cliente_id) ? pre.cliente_id : comProjeto[0].id;
+  const opcoesProjeto = (clienteId, selecionado) =>
+    abertos
+      .filter((p) => p.cliente_id === clienteId)
+      .map((p) => `<option value="${p.id}" ${p.id === selecionado ? "selected" : ""}>${esc(p.nome)}</option>`)
+      .join("");
+
+  abrirFormulario(
+    "Nova tarefa",
+    `<div class="row-2">` +
+      campo(
+        "Cliente",
+        `<select name="cliente_id" required>${comProjeto
+          .map((c) => `<option value="${c.id}" ${c.id === clienteInicial ? "selected" : ""}>${esc(c.nome)}</option>`)
+          .join("")}</select>`
+      ) +
+      campo("Projeto", `<select name="projeto_id" required>${opcoesProjeto(clienteInicial, pre.projeto_id)}</select>`) +
+      `</div>` +
+      formTarefa(),
+    async ({ cliente_id, projeto_id, ...dados }) => {
+      await api(`/projetos/${projeto_id}/tarefas`, { method: "POST", body: dados });
+      toast("Tarefa criada", true);
+    },
+    (form) => {
+      const projeto = form.elements.namedItem("projeto_id");
+      form.elements.namedItem("cliente_id").onchange = (e) => (projeto.innerHTML = opcoesProjeto(e.target.value));
+    }
+  );
+}
+
+/** Liga os botões/seletores de status, edição e exclusão de tarefas na tela atual. */
+function ligarAcoesTarefas(tarefas) {
+  const porId = Object.fromEntries(tarefas.map((t) => [t.id, t]));
+  $app.querySelectorAll("[data-status]").forEach(
+    (el) =>
+      (el.onchange = () =>
+        acao(() => api(`/tarefas/${el.dataset.status}`, { method: "PATCH", body: { status: el.value } })))
+  );
+  $app.querySelectorAll("[data-editar]").forEach(
+    (el) =>
+      (el.onclick = () =>
+        abrirFormulario("Editar tarefa", formTarefa(porId[el.dataset.editar]), (d) =>
+          api(`/tarefas/${el.dataset.editar}`, { method: "PATCH", body: d })
+        ))
+  );
+  $app.querySelectorAll("[data-excluir]").forEach(
+    (el) =>
+      (el.onclick = () => {
+        if (confirm(`Excluir a tarefa "${porId[el.dataset.excluir].titulo}"?`))
+          acao(() => api(`/tarefas/${el.dataset.excluir}`, { method: "DELETE" }), "Tarefa excluída");
+      })
+  );
+  return porId;
+}
+
 async function viewProjeto(id) {
   const [p, tarefas, clientes] = await Promise.all([
     api(`/projetos/${id}`),
@@ -269,7 +333,7 @@ async function viewProjeto(id) {
         .join("")}
     </div>`;
 
-  const porId = Object.fromEntries(tarefas.map((t) => [t.id, t]));
+  const porId = ligarAcoesTarefas(tarefas);
   const mudarStatus = (tid, status) =>
     acao(() => api(`/tarefas/${tid}`, { method: "PATCH", body: { status } }));
 
@@ -280,30 +344,12 @@ async function viewProjeto(id) {
     document.getElementById("finalizar").onclick = () =>
       acao(() => api(`/projetos/${id}/finalizar`, { method: "POST" }), "Projeto finalizado!");
     document.getElementById("nova-tarefa").onclick = () =>
-      abrirFormulario("Nova tarefa", formTarefa(), (d) =>
-        api(`/projetos/${id}/tarefas`, { method: "POST", body: d })
-      );
+      abrirNovaTarefa({ cliente_id: p.cliente_id, projeto_id: id });
     document.getElementById("editar").onclick = () =>
       abrirFormulario("Editar projeto", formProjeto(clientes, p), (d) =>
         api(`/projetos/${id}`, { method: "PATCH", body: d })
       );
   }
-
-  $app.querySelectorAll("[data-status]").forEach((el) => (el.onchange = () => mudarStatus(el.dataset.status, el.value)));
-  $app.querySelectorAll("[data-editar]").forEach(
-    (el) =>
-      (el.onclick = () =>
-        abrirFormulario("Editar tarefa", formTarefa(porId[el.dataset.editar]), (d) =>
-          api(`/tarefas/${el.dataset.editar}`, { method: "PATCH", body: d })
-        ))
-  );
-  $app.querySelectorAll("[data-excluir]").forEach(
-    (el) =>
-      (el.onclick = () => {
-        if (confirm(`Excluir a tarefa "${porId[el.dataset.excluir].titulo}"?`))
-          acao(() => api(`/tarefas/${el.dataset.excluir}`, { method: "DELETE" }), "Tarefa excluída");
-      })
-  );
 
   // Arrastar e soltar entre colunas
   $app.querySelectorAll('.task[draggable="true"]').forEach(
@@ -381,6 +427,18 @@ function novoTipoServico() {
 
 async function viewClientes() {
   const clientes = await api("/clientes");
+  const ativos = clientes.filter((c) => c.ativo);
+  const total = ativos.reduce((soma, c) => soma + Number(c.valor_total_servicos), 0);
+  const servicosAtivos = ativos.flatMap((c) => c.servicos.filter((s) => s.ativo));
+  const porTipo = {};
+  for (const s of servicosAtivos) {
+    porTipo[s.tipo_servico_nome] ??= { valor: 0, qtd: 0 };
+    porTipo[s.tipo_servico_nome].valor += Number(s.valor);
+    porTipo[s.tipo_servico_nome].qtd += 1;
+  }
+  const tipos = Object.entries(porTipo).sort((a, b) => b[1].valor - a[1].valor);
+  const maiorValor = Math.max(1, ...tipos.map(([, v]) => v.valor));
+
   $app.innerHTML = `
     <div class="page-head">
       <h1>Clientes</h1>
@@ -389,6 +447,31 @@ async function viewClientes() {
         <button class="btn primary" id="novo-cliente">+ Novo cliente</button>
       </div>
     </div>
+    <div class="kpis">
+      <div class="kpi"><div class="label">Valor total contratado</div><div class="value">${brl.format(total)}</div>
+        <div class="small muted">soma dos serviços ativos</div></div>
+      <div class="kpi"><div class="label">Ticket médio por cliente</div>
+        <div class="value">${brl.format(ativos.length ? total / ativos.length : 0)}</div>
+        <div class="small muted">valor total ÷ clientes ativos</div></div>
+      <div class="kpi"><div class="label">Clientes ativos</div><div class="value">${ativos.length}</div>
+        <div class="small muted">${clientes.length - ativos.length} inativo(s)</div></div>
+      <div class="kpi"><div class="label">Serviços ativos</div><div class="value">${servicosAtivos.length}</div>
+        <div class="small muted">${tipos.length} tipo(s) de serviço</div></div>
+    </div>
+    ${
+      tipos.length
+        ? `<div class="panel"><h2>Valor contratado por tipo de serviço</h2><div class="bars">${tipos
+            .map(
+              ([nome, v]) => `<div class="bar-row">
+                <span>${esc(nome)} <span class="muted small">· ${v.qtd} cliente(s)</span></span>
+                <div class="bar-track"><span style="width:${(100 * v.valor) / maiorValor}%"></span></div>
+                <span class="num"><strong>${brl.format(v.valor)}</strong>
+                  <span class="muted small">${total ? Math.round((100 * v.valor) / total) : 0}%</span></span>
+              </div>`
+            )
+            .join("")}</div></div>`
+        : ""
+    }
     <div class="panel table-wrap" style="padding:0">
       <table>
         <thead><tr><th>Cliente</th><th>Cadastro</th><th>Serviços contratados</th><th class="num">Valor total</th><th>Status</th></tr></thead>
@@ -412,6 +495,11 @@ async function viewClientes() {
               .join("") || `<tr><td colspan="5" class="empty">Nenhum cliente cadastrado.</td></tr>`
           }
         </tbody>
+        ${
+          clientes.length
+            ? `<tfoot><tr><th colspan="3">Total — clientes ativos</th><th class="num">${brl.format(total)}</th><th></th></tr></tfoot>`
+            : ""
+        }
       </table>
     </div>`;
   document.getElementById("novo-cliente").onclick = novoCliente;
@@ -504,6 +592,92 @@ async function viewCliente(id) {
   );
 }
 
+// ---------- Tarefas ----------
+
+const filtrosTarefas = { cliente_id: "", projeto_id: "", status: "", prioridade: "", atrasadas: false };
+
+async function viewTarefas() {
+  const f = filtrosTarefas;
+  const qs = new URLSearchParams(Object.entries(f).filter(([k, v]) => v && k !== "atrasadas")).toString();
+  const [clientes, projetos, todas] = await Promise.all([
+    api("/clientes"),
+    api("/projetos"),
+    api("/tarefas" + (qs ? `?${qs}` : "")),
+  ]);
+  const estaAtrasada = (t) => atrasada(t.data_prazo, t.status === "FINALIZADA");
+  const tarefas = f.atrasadas ? todas.filter(estaAtrasada) : todas;
+  const conta = (status) => todas.filter((t) => t.status === status).length;
+  const projetosFiltro = projetos.filter((p) => !f.cliente_id || p.cliente_id === f.cliente_id);
+  const opt = (lista, sel) =>
+    lista.map((x) => `<option value="${x.id}" ${x.id === sel ? "selected" : ""}>${esc(x.nome)}</option>`).join("");
+
+  $app.innerHTML = `
+    <div class="page-head">
+      <h1>Tarefas</h1>
+      <div class="toolbar"><button class="btn primary" id="nova-tarefa">+ Nova tarefa</button></div>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="label">A fazer</div><div class="value">${conta("A_FAZER")}</div></div>
+      <div class="kpi"><div class="label">Em andamento</div><div class="value">${conta("EM_ANDAMENTO")}</div></div>
+      <div class="kpi"><div class="label">Bloqueadas</div><div class="value">${conta("BLOQUEADA")}</div></div>
+      <div class="kpi"><div class="label">Atrasadas</div><div class="value ${todas.some(estaAtrasada) ? "late" : ""}">${
+        todas.filter(estaAtrasada).length
+      }</div></div>
+      <div class="kpi"><div class="label">Finalizadas</div><div class="value">${conta("FINALIZADA")}</div></div>
+    </div>
+    <div class="filters">
+      <select id="ft-cliente"><option value="">Todos os clientes</option>${opt(clientes, f.cliente_id)}</select>
+      <select id="ft-projeto"><option value="">Todos os projetos</option>${opt(projetosFiltro, f.projeto_id)}</select>
+      <select id="ft-status"><option value="">Todos os status</option>${options(STATUS_TAREFA, f.status)}</select>
+      <select id="ft-prioridade"><option value="">Todas as prioridades</option>${options(PRIORIDADE, f.prioridade)}</select>
+      <label class="check"><input type="checkbox" id="ft-atrasadas" ${f.atrasadas ? "checked" : ""}> Somente atrasadas</label>
+    </div>
+    <div class="panel table-wrap" style="padding:0">
+      <table>
+        <thead><tr>
+          <th>Tarefa</th><th>Cliente</th><th>Projeto</th><th>Prioridade</th><th>Status</th>
+          <th>Prazo</th><th>Criada</th><th>Finalizada</th><th></th>
+        </tr></thead>
+        <tbody>${
+          tarefas
+            .map((t) => {
+              const bloqueada = t.projeto_status === "FINALIZADO";
+              return `<tr>
+              <td><strong>${esc(t.titulo)}</strong>${t.descricao ? `<div class="small muted">${esc(t.descricao)}</div>` : ""}</td>
+              <td class="nowrap"><a href="#/clientes/${t.cliente_id}">${esc(t.cliente_nome)}</a></td>
+              <td><a href="#/projetos/${t.projeto_id}">${esc(t.projeto_nome)}</a></td>
+              <td>${badge(PRIORIDADE, t.prioridade)}</td>
+              <td><select data-status="${t.id}" ${bloqueada ? "disabled title='Projeto finalizado'" : ""}>${options(STATUS_TAREFA, t.status)}</select></td>
+              <td class="nowrap ${estaAtrasada(t) ? "late" : ""}">${fmtData(t.data_prazo)}</td>
+              <td class="nowrap small">${fmtDataHora(t.data_criacao)}</td>
+              <td class="nowrap small">${fmtDataHora(t.data_finalizacao)}</td>
+              <td class="nowrap">
+                <button class="btn sm" data-editar="${t.id}" ${bloqueada ? "disabled" : ""}>Editar</button>
+                <button class="btn sm danger" data-excluir="${t.id}" ${bloqueada ? "disabled" : ""}>Excluir</button>
+              </td>
+            </tr>`;
+            })
+            .join("") || `<tr><td colspan="9" class="empty">Nenhuma tarefa encontrada.</td></tr>`
+        }</tbody>
+      </table>
+    </div>`;
+
+  const filtro = (campo, el) => (el.onchange = () => ((f[campo] = el.type === "checkbox" ? el.checked : el.value), render()));
+  document.getElementById("ft-cliente").onchange = (e) => {
+    f.cliente_id = e.target.value;
+    const projeto = projetos.find((p) => p.id === f.projeto_id);
+    if (projeto && f.cliente_id && projeto.cliente_id !== f.cliente_id) f.projeto_id = "";
+    render();
+  };
+  filtro("projeto_id", document.getElementById("ft-projeto"));
+  filtro("status", document.getElementById("ft-status"));
+  filtro("prioridade", document.getElementById("ft-prioridade"));
+  filtro("atrasadas", document.getElementById("ft-atrasadas"));
+  document.getElementById("nova-tarefa").onclick = () =>
+    abrirNovaTarefa({ cliente_id: f.cliente_id, projeto_id: f.projeto_id });
+  ligarAcoesTarefas(tarefas);
+}
+
 // ---------- Roteamento ----------
 
 async function render() {
@@ -511,14 +685,23 @@ async function render() {
   document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === secao));
   try {
     if (secao === "clientes") await (id ? viewCliente(id) : viewClientes());
+    else if (secao === "tarefas") await viewTarefas();
     else await (id ? viewProjeto(id) : viewProjetos());
   } catch (e) {
     $app.innerHTML = `<div class="panel empty">Não foi possível carregar: ${esc(e.message)}</div>`;
   }
 }
 
+// Menu lateral no celular
+const sidebar = document.getElementById("sidebar");
+const backdrop = document.getElementById("backdrop");
+const menu = (aberto) => (sidebar.classList.toggle("open", aberto), backdrop.classList.toggle("open", aberto));
+document.getElementById("menu-btn").onclick = () => menu(true);
+backdrop.onclick = () => menu(false);
+
 window.addEventListener("hashchange", () => {
   document.getElementById("toast").hidden = true;
+  menu(false);
   render();
 });
 render();

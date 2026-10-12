@@ -115,9 +115,46 @@ class ProjetoRepository:
         self.db.update("projetos", id_, values)
 
 
+_ORDEM_PRIORIDADE = (
+    "CASE {col} WHEN 'URGENTE' THEN 1 WHEN 'ALTA' THEN 2 WHEN 'MEDIA' THEN 3 ELSE 4 END"
+)
+
+
 class TarefaRepository:
     def __init__(self, db: Database):
         self.db = db
+
+    def listar_todas(
+        self,
+        cliente_id: str | None = None,
+        projeto_id: str | None = None,
+        status: str | None = None,
+        prioridade: str | None = None,
+    ) -> list[Row]:
+        filtros, params = [], {}
+        for coluna, valor in (
+            ("p.cliente_id", cliente_id),
+            ("t.projeto_id", projeto_id),
+            ("t.status", status),
+            ("t.prioridade", prioridade),
+        ):
+            if valor:
+                nome = coluna.split(".")[1]
+                filtros.append(f"{coluna} = :{nome}")
+                params[nome] = valor
+        where = f"WHERE {' AND '.join(filtros)}" if filtros else ""
+        return self.db.fetch_all(
+            f"""
+            SELECT t.*, p.nome AS projeto_nome, p.status AS projeto_status,
+                   c.id AS cliente_id, c.nome AS cliente_nome
+            FROM {self.db.table('tarefas')} t
+            JOIN {self.db.table('projetos')} p ON p.id = t.projeto_id
+            JOIN {self.db.table('clientes')} c ON c.id = p.cliente_id
+            {where}
+            ORDER BY {_ORDEM_PRIORIDADE.format(col='t.prioridade')}, t.data_prazo, t.data_criacao
+            """,
+            params,
+        )
 
     def listar(
         self, projeto_id: str, status: str | None = None, prioridade: str | None = None
@@ -129,13 +166,9 @@ class TarefaRepository:
         if prioridade:
             filtros.append("prioridade = :prioridade")
             params["prioridade"] = prioridade
-        ordem_prioridade = (
-            "CASE prioridade WHEN 'URGENTE' THEN 1 WHEN 'ALTA' THEN 2 "
-            "WHEN 'MEDIA' THEN 3 ELSE 4 END"
-        )
         return self.db.fetch_all(
             f"SELECT * FROM {self.db.table('tarefas')} WHERE {' AND '.join(filtros)} "
-            f"ORDER BY {ordem_prioridade}, data_criacao",
+            f"ORDER BY {_ORDEM_PRIORIDADE.format(col='prioridade')}, data_criacao",
             params,
         )
 

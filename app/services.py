@@ -17,6 +17,7 @@ from app.models import (
     StatusTarefa,
     Tarefa,
     TarefaCreate,
+    TarefaDetalhada,
     TarefaUpdate,
     TipoServico,
     TipoServicoCreate,
@@ -241,6 +242,17 @@ class TarefaService:
                 "Reabra o projeto primeiro."
             )
         return projeto
+
+    def listar_todas(
+        self, cliente_id=None, projeto_id=None, status=None, prioridade=None
+    ) -> list[TarefaDetalhada]:
+        rows = self.repo.listar_todas(
+            cliente_id,
+            projeto_id,
+            status.value if status else None,
+            prioridade.value if prioridade else None,
+        )
+        return [TarefaDetalhada(**r) for r in rows]
 
     def listar(self, projeto_id: str, status=None, prioridade=None) -> list[Tarefa]:
         self.projetos.obter(projeto_id)

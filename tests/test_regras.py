@@ -118,3 +118,19 @@ def test_patch_com_null_em_campo_obrigatorio_e_ignorado(client, projeto_id):
     resp = client.patch(f"/tarefas/{t['id']}", json={"titulo": None, "descricao": "nova"})
     assert resp.status_code == 200
     assert resp.json()["titulo"] == "T"
+
+
+def test_listagem_geral_de_tarefas_com_projeto_e_cliente(client, cliente_id, projeto_id):
+    outro = client.post("/clientes", json={"nome": "Outro"}).json()["id"]
+    outro_proj = client.post("/projetos", json={"cliente_id": outro, "nome": "P2"}).json()["id"]
+    client.post(f"/projetos/{projeto_id}/tarefas", json={"titulo": "A", "prioridade": "BAIXA"})
+    client.post(f"/projetos/{outro_proj}/tarefas", json={"titulo": "B", "prioridade": "URGENTE"})
+
+    todas = client.get("/tarefas").json()
+    assert [t["titulo"] for t in todas] == ["B", "A"]
+    assert todas[1]["cliente_nome"] == "Loja Exemplo"
+    assert todas[1]["projeto_nome"] == "Black Friday"
+
+    so_cliente = client.get(f"/tarefas?cliente_id={cliente_id}").json()
+    assert [t["titulo"] for t in so_cliente] == ["A"]
+    assert len(client.get("/tarefas?prioridade=URGENTE").json()) == 1

@@ -145,3 +145,12 @@ class Tarefa(BaseModel):
     data_criacao: DataHora
     data_prazo: date | None
     data_finalizacao: DataHora | None
+
+
+class TarefaDetalhada(Tarefa):
+    """Tarefa com o projeto e o cliente a que pertence (listagem geral)."""
+
+    projeto_nome: str
+    projeto_status: StatusProjeto
+    cliente_id: str
+    cliente_nome: str
