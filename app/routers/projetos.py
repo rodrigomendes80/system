@@ -14,10 +14,10 @@ from app.models import (
 )
 from app.services import ProjetoService, TarefaService
 
-router = APIRouter(prefix="/projetos", tags=["Projetos"])
+router = APIRouter(prefix="/projetos")
 
 
-@router.get("", response_model=list[Projeto])
+@router.get("", response_model=list[Projeto], tags=["Projetos"])
 def listar_projetos(
     cliente_id: str | None = None,
     status: StatusProjeto | None = None,
@@ -26,28 +26,28 @@ def listar_projetos(
     return ProjetoService(db).listar(cliente_id, status)
 
 
-@router.post("", response_model=Projeto, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=Projeto, status_code=status.HTTP_201_CREATED, tags=["Projetos"])
 def criar_projeto(dados: ProjetoCreate, db: Database = Depends(get_db)):
     return ProjetoService(db).criar(dados)
 
 
-@router.get("/{projeto_id}", response_model=Projeto)
+@router.get("/{projeto_id}", response_model=Projeto, tags=["Projetos"])
 def obter_projeto(projeto_id: str, db: Database = Depends(get_db)):
     return ProjetoService(db).obter(projeto_id)
 
 
-@router.patch("/{projeto_id}", response_model=Projeto)
+@router.patch("/{projeto_id}", response_model=Projeto, tags=["Projetos"])
 def atualizar_projeto(projeto_id: str, dados: ProjetoUpdate, db: Database = Depends(get_db)):
     return ProjetoService(db).atualizar(projeto_id, dados)
 
 
-@router.post("/{projeto_id}/finalizar", response_model=Projeto)
+@router.post("/{projeto_id}/finalizar", response_model=Projeto, tags=["Projetos"])
 def finalizar_projeto(projeto_id: str, db: Database = Depends(get_db)):
     """Finaliza o projeto. Retorna 409 se houver alguma tarefa não finalizada."""
     return ProjetoService(db).finalizar(projeto_id)
 
 
-@router.post("/{projeto_id}/reabrir", response_model=Projeto)
+@router.post("/{projeto_id}/reabrir", response_model=Projeto, tags=["Projetos"])
 def reabrir_projeto(projeto_id: str, db: Database = Depends(get_db)):
     return ProjetoService(db).reabrir(projeto_id)
 
