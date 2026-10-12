@@ -25,6 +25,11 @@ class StatusTarefa(str, Enum):
     FINALIZADA = "FINALIZADA"
 
 
+class TipoHistorico(str, Enum):
+    COMENTARIO = "COMENTARIO"
+    SISTEMA = "SISTEMA"
+
+
 class Prioridade(str, Enum):
     BAIXA = "BAIXA"
     MEDIA = "MEDIA"
@@ -156,6 +161,20 @@ class Tarefa(BaseModel):
     data_criacao: DataHora
     data_prazo: date | None
     data_finalizacao: DataHora | None
+    total_comentarios: int = 0
+
+
+class ComentarioCreate(BaseModel):
+    texto: str = Field(min_length=1, max_length=10000)
+
+
+class RegistroHistorico(BaseModel):
+    id: str
+    tarefa_id: str
+    tipo: TipoHistorico
+    texto: str
+    autor: str | None
+    data_criacao: DataHora
 
 
 class TarefaDetalhada(Tarefa):

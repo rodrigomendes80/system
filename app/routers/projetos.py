@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, status
 
 from app.db.base import Database
-from app.deps import get_db
+from app.deps import get_db, get_usuario
 from app.models import (
     Prioridade,
     Projeto,
@@ -68,5 +68,10 @@ def listar_tarefas(
     status_code=status.HTTP_201_CREATED,
     tags=["Tarefas"],
 )
-def criar_tarefa(projeto_id: str, dados: TarefaCreate, db: Database = Depends(get_db)):
-    return TarefaService(db).criar(projeto_id, dados)
+def criar_tarefa(
+    projeto_id: str,
+    dados: TarefaCreate,
+    db: Database = Depends(get_db),
+    usuario: str | None = Depends(get_usuario),
+):
+    return TarefaService(db).criar(projeto_id, dados, usuario)

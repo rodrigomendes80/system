@@ -12,3 +12,6 @@ ALTER TABLE {fq}.tarefas ADD CONSTRAINT chk_tarefas_prioridade
 
 ALTER TABLE {fq}.cliente_servicos ADD CONSTRAINT chk_cliente_servicos_valor
   CHECK (valor >= 0);
+
+ALTER TABLE {fq}.tarefa_historico ADD CONSTRAINT chk_tarefa_historico_tipo
+  CHECK (tipo IN ('COMENTARIO', 'SISTEMA'));

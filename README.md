@@ -11,6 +11,7 @@ desenvolver no VS Code e publicar como **Databricks App**.
 | `/` → **Projetos** | Indicadores (clientes ativos, receita contratada, projetos em aberto/atrasados), filtros por cliente e status, cards com % de conclusão |
 | **Projeto** | Quadro (kanban) com as tarefas por status — arraste entre colunas ou troque no seletor —, prioridade, datas, botões Finalizar/Reabrir |
 | **Clientes** | Totalizador (valor contratado, ticket médio, clientes e serviços ativos), valor por tipo de serviço, lista com total; cadastro com vários serviços |
+| **Tarefa** (clique no título) | Dados da tarefa e **histórico**: comentários para documentar o andamento + registros automáticos de mudanças (status, prioridade, prazo, projeto) |
 | **Tarefas** | Todas as tarefas em **lista ou kanban**, indicadores (para hoje, por status, atrasadas), filtros por cliente, projeto, status, prioridade e prazo (para hoje, atrasadas, próximos 7 dias); nova tarefa escolhendo cliente e projeto |
 | **Cliente** | Dados, serviços (contratar/encerrar) e projetos do cliente |
 | `/docs` | Documentação e testes da API |
@@ -48,7 +49,11 @@ O cliente retorna também `valor_total_servicos` (soma dos serviços ativos) e o
    Para mexer, use `POST /projetos/{id}/reabrir`.
 4. A **data de finalização da tarefa** é preenchida automaticamente ao mudar o status para
    `FINALIZADA` e limpa se a tarefa for reaberta. O mesmo vale para o projeto.
-5. Serviços contratados não são apagados: ao encerrar, ficam inativos (histórico preservado)
+5. Cada tarefa tem um **histórico**: os comentários do usuário e os registros automáticos de
+   criação e mudanças. Registros automáticos não podem ser excluídos; comentários podem. Comentários
+   são permitidos mesmo em tarefas de projeto finalizado. No Databricks App o autor é preenchido
+   com o e-mail do usuário logado.
+6. Serviços contratados não são apagados: ao encerrar, ficam inativos (histórico preservado)
    e saem do valor total.
 
 As regras ficam em [`app/services.py`](app/services.py).
@@ -133,6 +138,9 @@ Os testes usam SQLite em memória e cobrem as regras acima.
 | GET/POST | `/projetos/{id}/tarefas` | Lista (filtros `status`, `prioridade`) / cria tarefa |
 | GET | `/tarefas` | Todas as tarefas com projeto e cliente (filtros `cliente_id`, `projeto_id`, `sem_projeto`, `status`, `prioridade`) |
 | POST | `/tarefas` | Cria tarefa para um cliente, com ou sem `projeto_id` |
+| GET | `/tarefas/{id}/historico` | Comentários e registros automáticos da tarefa |
+| POST | `/tarefas/{id}/comentarios` | Adiciona comentário |
+| DELETE | `/tarefas/{id}/comentarios/{comentario_id}` | Exclui comentário |
 | GET/PATCH/DELETE | `/tarefas/{id}` | Consulta / altera / exclui tarefa |
 
 ## Estrutura

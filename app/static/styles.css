@@ -150,3 +150,20 @@ a.kpi.clickable { color: inherit; display: block; transition: border-color .15s;
 a.kpi.clickable:hover { border-color: var(--primary); }
 .task .origem { font-size: 12px; margin-bottom: 4px; }
 a.kpi.clickable.on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+
+/* Detalhe da tarefa e histórico */
+.link-tarefa { color: inherit; }
+.link-tarefa:hover { color: var(--primary); text-decoration: underline; }
+.coments { font-size: 11px; color: var(--muted); margin-left: 6px; white-space: nowrap; }
+.texto { white-space: pre-wrap; word-break: break-word; }
+.novo-comentario textarea { min-height: 80px; }
+.novo-comentario .actions { justify-content: space-between; align-items: center; }
+.timeline { list-style: none; margin: 20px 0 0; padding: 0; display: grid; gap: 14px; }
+.hist { display: grid; grid-template-columns: 32px 1fr; gap: 10px; align-items: start; }
+.hist.sistema { font-size: 13px; color: var(--muted); }
+.hist-ponto { width: 10px; height: 10px; border-radius: 50%; background: var(--border); margin: 5px auto 0; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--info-bg); color: var(--primary); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+.balao { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
+.balao-topo { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.balao-topo .btn { margin-left: auto; opacity: .6; }
+.balao-topo .btn:hover { opacity: 1; }

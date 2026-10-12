@@ -51,3 +51,14 @@ CREATE TABLE IF NOT EXISTS tarefas (
   data_prazo        TEXT,
   data_finalizacao  TEXT
 );
+
+-- Histórico da tarefa: comentários do usuário e registros automáticos do sistema
+CREATE TABLE IF NOT EXISTS tarefa_historico (
+  id            TEXT PRIMARY KEY,
+  tarefa_id     TEXT NOT NULL REFERENCES tarefas(id),
+  tipo          TEXT NOT NULL CHECK (tipo IN ('COMENTARIO', 'SISTEMA')),
+  texto         TEXT NOT NULL,
+  autor         TEXT,
+  data_criacao  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tarefa_historico_tarefa ON tarefa_historico (tarefa_id, data_criacao);

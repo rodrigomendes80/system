@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, Response, status
 
 from app.db.base import Database
-from app.deps import get_db
+from app.deps import get_db, get_usuario
 from app.models import (
+    ComentarioCreate,
     Prioridade,
+    RegistroHistorico,
     StatusTarefa,
     Tarefa,
     TarefaAvulsaCreate,
@@ -29,9 +31,11 @@ def listar_todas_tarefas(
 
 
 @router.post("", response_model=Tarefa, status_code=status.HTTP_201_CREATED)
-def criar_tarefa(dados: TarefaAvulsaCreate, db: Database = Depends(get_db)):
+def criar_tarefa(
+    dados: TarefaAvulsaCreate, db: Database = Depends(get_db), usuario: str | None = Depends(get_usuario)
+):
     """Cria uma tarefa para um cliente, alocada ou não em um projeto."""
-    return TarefaService(db).criar_avulsa(dados)
+    return TarefaService(db).criar_avulsa(dados, usuario)
 
 
 @router.get("/{tarefa_id}", response_model=Tarefa)
@@ -40,11 +44,47 @@ def obter_tarefa(tarefa_id: str, db: Database = Depends(get_db)):
 
 
 @router.patch("/{tarefa_id}", response_model=Tarefa)
-def atualizar_tarefa(tarefa_id: str, dados: TarefaUpdate, db: Database = Depends(get_db)):
-    return TarefaService(db).atualizar(tarefa_id, dados)
+def atualizar_tarefa(
+    tarefa_id: str,
+    dados: TarefaUpdate,
+    db: Database = Depends(get_db),
+    usuario: str | None = Depends(get_usuario),
+):
+    return TarefaService(db).atualizar(tarefa_id, dados, usuario)
 
 
 @router.delete("/{tarefa_id}", status_code=status.HTTP_204_NO_CONTENT)
 def excluir_tarefa(tarefa_id: str, db: Database = Depends(get_db)):
     TarefaService(db).excluir(tarefa_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{tarefa_id}/historico", response_model=list[RegistroHistorico], tags=["Histórico"])
+def historico_tarefa(tarefa_id: str, db: Database = Depends(get_db)):
+    """Comentários e registros automáticos da tarefa, do mais antigo ao mais recente."""
+    return TarefaService(db).historico(tarefa_id)
+
+
+@router.post(
+    "/{tarefa_id}/comentarios",
+    response_model=RegistroHistorico,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Histórico"],
+)
+def comentar_tarefa(
+    tarefa_id: str,
+    dados: ComentarioCreate,
+    db: Database = Depends(get_db),
+    usuario: str | None = Depends(get_usuario),
+):
+    return TarefaService(db).comentar(tarefa_id, dados, usuario)
+
+
+@router.delete(
+    "/{tarefa_id}/comentarios/{comentario_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Histórico"],
+)
+def excluir_comentario(tarefa_id: str, comentario_id: str, db: Database = Depends(get_db)):
+    TarefaService(db).excluir_comentario(tarefa_id, comentario_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

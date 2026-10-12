@@ -71,3 +71,15 @@ CREATE TABLE IF NOT EXISTS {fq}.tarefas (
   CONSTRAINT fk_tarefas_projeto FOREIGN KEY (projeto_id) REFERENCES {fq}.projetos
 ) USING DELTA
 COMMENT 'Tarefas (pertencem a um cliente; o projeto é opcional)';
+
+CREATE TABLE IF NOT EXISTS {fq}.tarefa_historico (
+  id            STRING    NOT NULL,
+  tarefa_id     STRING    NOT NULL,
+  tipo          STRING    NOT NULL COMMENT 'COMENTARIO (escrito pelo usuário) ou SISTEMA (registro automático)',
+  texto         STRING    NOT NULL,
+  autor         STRING    COMMENT 'E-mail do usuário (preenchido automaticamente no Databricks App)',
+  data_criacao  TIMESTAMP NOT NULL,
+  CONSTRAINT pk_tarefa_historico PRIMARY KEY (id),
+  CONSTRAINT fk_tarefa_historico_tarefa FOREIGN KEY (tarefa_id) REFERENCES {fq}.tarefas
+) USING DELTA
+COMMENT 'Histórico/documentação de cada tarefa: comentários e mudanças registradas pelo sistema';

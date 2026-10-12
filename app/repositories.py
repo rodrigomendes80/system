@@ -115,6 +115,10 @@ class ProjetoRepository:
         self.db.update("projetos", id_, values)
 
 
+_TOTAL_COMENTARIOS = """(
+    SELECT COUNT(*) FROM {tabela} h WHERE h.tarefa_id = t.id AND h.tipo = 'COMENTARIO'
+) AS total_comentarios"""
+
 _ORDEM_PRIORIDADE = (
     "CASE {col} WHEN 'URGENTE' THEN 1 WHEN 'ALTA' THEN 2 WHEN 'MEDIA' THEN 3 ELSE 4 END"
 )
@@ -148,7 +152,8 @@ class TarefaRepository:
         where = f"WHERE {' AND '.join(filtros)}" if filtros else ""
         return self.db.fetch_all(
             f"""
-            SELECT t.*, p.nome AS projeto_nome, p.status AS projeto_status, c.nome AS cliente_nome
+            SELECT t.*, p.nome AS projeto_nome, p.status AS projeto_status, c.nome AS cliente_nome,
+                   {self._total_comentarios()}
             FROM {self.db.table('tarefas')} t
             JOIN {self.db.table('clientes')} c ON c.id = t.cliente_id
             LEFT JOIN {self.db.table('projetos')} p ON p.id = t.projeto_id
@@ -169,15 +174,20 @@ class TarefaRepository:
             filtros.append("prioridade = :prioridade")
             params["prioridade"] = prioridade
         return self.db.fetch_all(
-            f"SELECT * FROM {self.db.table('tarefas')} WHERE {' AND '.join(filtros)} "
+            f"SELECT t.*, {self._total_comentarios()} FROM {self.db.table('tarefas')} t "
+            f"WHERE {' AND '.join(filtros)} "
             f"ORDER BY {_ORDEM_PRIORIDADE.format(col='prioridade')}, data_criacao",
             params,
         )
 
     def obter(self, id_: str) -> Row | None:
         return self.db.fetch_one(
-            f"SELECT * FROM {self.db.table('tarefas')} WHERE id = :id", {"id": id_}
+            f"SELECT t.*, {self._total_comentarios()} FROM {self.db.table('tarefas')} t WHERE t.id = :id",
+            {"id": id_},
         )
+
+    def _total_comentarios(self) -> str:
+        return _TOTAL_COMENTARIOS.format(tabela=self.db.table("tarefa_historico"))
 
     def inserir(self, values: dict[str, Any]) -> None:
         self.db.insert("tarefas", values)
@@ -186,4 +196,30 @@ class TarefaRepository:
         self.db.update("tarefas", id_, values)
 
     def excluir(self, id_: str) -> None:
+        # Delta não tem exclusão em cascata: remove o histórico antes da tarefa
+        self.db.execute(
+            f"DELETE FROM {self.db.table('tarefa_historico')} WHERE tarefa_id = :id", {"id": id_}
+        )
         self.db.execute(f"DELETE FROM {self.db.table('tarefas')} WHERE id = :id", {"id": id_})
+
+    # ----- Histórico (comentários e registros do sistema) -----
+
+    def listar_historico(self, tarefa_id: str) -> list[Row]:
+        return self.db.fetch_all(
+            f"SELECT * FROM {self.db.table('tarefa_historico')} WHERE tarefa_id = :tarefa_id "
+            "ORDER BY data_criacao, id",
+            {"tarefa_id": tarefa_id},
+        )
+
+    def obter_registro(self, registro_id: str) -> Row | None:
+        return self.db.fetch_one(
+            f"SELECT * FROM {self.db.table('tarefa_historico')} WHERE id = :id", {"id": registro_id}
+        )
+
+    def inserir_registro(self, values: dict[str, Any]) -> None:
+        self.db.insert("tarefa_historico", values)
+
+    def excluir_registro(self, registro_id: str) -> None:
+        self.db.execute(
+            f"DELETE FROM {self.db.table('tarefa_historico')} WHERE id = :id", {"id": registro_id}
+        )

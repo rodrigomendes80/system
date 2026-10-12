@@ -209,3 +209,58 @@ def test_migracao_de_base_antiga(tmp_path):
         "VALUES ('t2', 'c1', NULL, 'Sem projeto', 'A_FAZER', 'BAIXA', '2026-01-02T00:00:00+00:00')"
     )
     db.close()
+
+
+def test_historico_registra_criacao_e_mudancas(client, cliente_id, projeto_id):
+    t = client.post(f"/projetos/{projeto_id}/tarefas", json={"titulo": "T", "prioridade": "ALTA"}).json()
+    client.patch(f"/tarefas/{t['id']}", json={"status": "EM_ANDAMENTO", "data_prazo": "2026-11-20"})
+    client.patch(f"/tarefas/{t['id']}", json={"projeto_id": None})
+    client.patch(f"/tarefas/{t['id']}", json={"status": "EM_ANDAMENTO"})  # sem mudança: não registra
+
+    textos = [r["texto"] for r in client.get(f"/tarefas/{t['id']}/historico").json()]
+    assert textos == [
+        "Tarefa criada com status A fazer e prioridade Alta",
+        "Status alterado de A fazer para Em andamento",
+        "Prazo alterado de sem prazo para 20/11/2026",
+        "Projeto alterado de Black Friday para Sem projeto",
+    ]
+
+
+def test_comentarios_da_tarefa(client, projeto_id):
+    t = client.post(f"/projetos/{projeto_id}/tarefas", json={"titulo": "T"}).json()
+    resp = client.post(
+        f"/tarefas/{t['id']}/comentarios",
+        json={"texto": "Cliente aprovou o criativo"},
+        headers={"X-Forwarded-Email": "rodrigo@empresa.com"},
+    )
+    assert resp.status_code == 201
+    comentario = resp.json()
+    assert comentario["tipo"] == "COMENTARIO"
+    assert comentario["autor"] == "rodrigo@empresa.com"
+    client.post(f"/tarefas/{t['id']}/comentarios", json={"texto": "Segundo comentário"})
+
+    historico = client.get(f"/tarefas/{t['id']}/historico").json()
+    assert [r["tipo"] for r in historico] == ["SISTEMA", "COMENTARIO", "COMENTARIO"]
+    assert client.get(f"/tarefas/{t['id']}").json()["total_comentarios"] == 2
+    assert client.get("/tarefas").json()[0]["total_comentarios"] == 2
+
+    # Comentário em branco é recusado
+    assert client.post(f"/tarefas/{t['id']}/comentarios", json={"texto": "   "}).status_code == 409
+    # Comentário pode ser excluído; registro do sistema não
+    assert client.delete(f"/tarefas/{t['id']}/comentarios/{comentario['id']}").status_code == 204
+    assert client.delete(f"/tarefas/{t['id']}/comentarios/{historico[0]['id']}").status_code == 409
+    assert client.get(f"/tarefas/{t['id']}").json()["total_comentarios"] == 1
+
+
+def test_comentar_em_tarefa_de_projeto_finalizado(client, projeto_id):
+    t = client.post(f"/projetos/{projeto_id}/tarefas", json={"titulo": "T", "status": "FINALIZADA"}).json()
+    client.post(f"/projetos/{projeto_id}/finalizar")
+    resp = client.post(f"/tarefas/{t['id']}/comentarios", json={"texto": "Documentação pós-entrega"})
+    assert resp.status_code == 201
+
+
+def test_excluir_tarefa_remove_historico(client, projeto_id):
+    t = client.post(f"/projetos/{projeto_id}/tarefas", json={"titulo": "T"}).json()
+    client.post(f"/tarefas/{t['id']}/comentarios", json={"texto": "x"})
+    assert client.delete(f"/tarefas/{t['id']}").status_code == 204
+    assert client.get(f"/tarefas/{t['id']}/historico").status_code == 404

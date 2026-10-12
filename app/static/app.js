@@ -189,7 +189,8 @@ function cardTarefa(t, bloqueado, comOrigem = false) {
   return `
     <div class="task" data-id="${t.id}" draggable="${!bloqueado}">
       ${badge(PRIORIDADE, t.prioridade)}
-      <div class="title">${esc(t.titulo)}</div>
+      <div class="title"><a class="link-tarefa" href="#/tarefas/${t.id}">${esc(t.titulo)}</a>
+        ${t.total_comentarios ? `<span class="coments" title="Comentários">💬 ${t.total_comentarios}</span>` : ""}</div>
       ${
         comOrigem
           ? `<div class="origem"><a href="#/clientes/${t.cliente_id}">${esc(t.cliente_nome)}</a> ·
@@ -727,7 +728,9 @@ async function viewTarefas() {
             .map((t) => {
               const travada = bloqueada(t);
               return `<tr>
-              <td><strong>${esc(t.titulo)}</strong>${t.descricao ? `<div class="small muted">${esc(t.descricao)}</div>` : ""}</td>
+              <td><a class="link-tarefa" href="#/tarefas/${t.id}"><strong>${esc(t.titulo)}</strong></a>
+                ${t.total_comentarios ? `<span class="coments" title="Comentários">💬 ${t.total_comentarios}</span>` : ""}
+                ${t.descricao ? `<div class="small muted">${esc(t.descricao)}</div>` : ""}</td>
               <td class="nowrap"><a href="#/clientes/${t.cliente_id}">${esc(t.cliente_nome)}</a></td>
               <td>${
                 t.projeto_id
@@ -783,6 +786,141 @@ async function viewTarefas() {
   ligarArrastar(ligarAcoesTarefas(tarefas));
 }
 
+// ---------- Detalhe da tarefa e histórico ----------
+
+let filtroHistorico = "todos";
+
+const iniciais = (texto) =>
+  (texto || "?")
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0].toUpperCase())
+    .join("");
+
+function itemHistorico(r) {
+  const quando = fmtDataHora(r.data_criacao);
+  if (r.tipo === "SISTEMA") {
+    return `<li class="hist sistema">
+      <span class="hist-ponto"></span>
+      <div><span>${esc(r.texto)}</span>
+        <div class="small muted">${quando}${r.autor ? ` · ${esc(r.autor)}` : ""}</div></div>
+    </li>`;
+  }
+  return `<li class="hist comentario">
+    <span class="avatar">${r.autor ? esc(iniciais(r.autor)) : "💬"}</span>
+    <div class="balao">
+      <div class="balao-topo">
+        <strong>${esc(r.autor || "Comentário")}</strong>
+        <span class="small muted">${quando}</span>
+        <button class="btn sm ghost danger" data-excluir-comentario="${r.id}" title="Excluir comentário">Excluir</button>
+      </div>
+      <div class="texto">${esc(r.texto)}</div>
+    </div>
+  </li>`;
+}
+
+async function viewTarefa(id) {
+  const t = await api(`/tarefas/${id}`);
+  const [cliente, projeto, historico] = await Promise.all([
+    api(`/clientes/${t.cliente_id}`),
+    t.projeto_id ? api(`/projetos/${t.projeto_id}`) : Promise.resolve(null),
+    api(`/tarefas/${id}/historico`),
+  ]);
+  const travada = projeto?.status === "FINALIZADO";
+  const finalizada = t.status === "FINALIZADA";
+  const comentarios = historico.filter((r) => r.tipo === "COMENTARIO");
+  const exibidos = (filtroHistorico === "comentarios" ? comentarios : historico).slice().reverse();
+
+  $app.innerHTML = `
+    <p><a href="#/tarefas">← Tarefas</a></p>
+    <div class="page-head">
+      <div>
+        <h1>${esc(t.titulo)} ${badge(STATUS_TAREFA, t.status)} ${badge(PRIORIDADE, t.prioridade)}</h1>
+        <div class="meta muted small">
+          <span>Cliente: <a href="#/clientes/${t.cliente_id}">${esc(cliente.nome)}</a></span>
+          <span>Projeto: ${
+            projeto ? `<a href="#/projetos/${projeto.id}">${esc(projeto.nome)}</a>` : "Sem projeto"
+          }</span>
+          <span>Criada: ${fmtDataHora(t.data_criacao)}</span>
+          <span class="${atrasada(t.data_prazo, finalizada) ? "late" : ""}">Prazo: ${fmtData(t.data_prazo)}</span>
+          ${finalizada ? `<span>Finalizada: ${fmtDataHora(t.data_finalizacao)}</span>` : ""}
+        </div>
+      </div>
+      <div class="toolbar">
+        <select data-status="${t.id}" ${travada ? "disabled" : ""}>${options(STATUS_TAREFA, t.status)}</select>
+        <button class="btn" data-editar="${t.id}" ${travada ? "disabled" : ""}>Editar</button>
+        <button class="btn danger" id="excluir-tarefa" ${travada ? "disabled" : ""}>Excluir</button>
+      </div>
+    </div>
+    ${
+      travada
+        ? `<div class="panel small muted">O projeto desta tarefa está finalizado: ela não pode ser alterada,
+           mas você ainda pode registrar comentários.</div>`
+        : ""
+    }
+    <div class="panel">
+      <h2>Descrição</h2>
+      ${t.descricao ? `<div class="texto">${esc(t.descricao)}</div>` : '<p class="muted">Sem descrição.</p>'}
+    </div>
+    <div class="panel">
+      <div class="page-head" style="margin-bottom:12px">
+        <h2 style="margin:0">Histórico</h2>
+        <div class="segmented" role="group" aria-label="Filtrar histórico">
+          <button class="${filtroHistorico === "todos" ? "on" : ""}" data-hist="todos">Tudo (${historico.length})</button>
+          <button class="${filtroHistorico === "comentarios" ? "on" : ""}" data-hist="comentarios">Comentários (${comentarios.length})</button>
+        </div>
+      </div>
+      <form id="form-comentario" class="novo-comentario">
+        <textarea name="texto" required placeholder="Escreva um comentário para documentar esta tarefa…"></textarea>
+        <div class="actions" style="margin-top:8px">
+          <span class="small muted">Ctrl + Enter para enviar</span>
+          <button type="submit" class="btn primary">Adicionar comentário</button>
+        </div>
+      </form>
+      ${
+        exibidos.length
+          ? `<ul class="timeline">${exibidos.map(itemHistorico).join("")}</ul>`
+          : `<p class="muted">Nenhum comentário ainda.</p>`
+      }
+    </div>`;
+
+  ligarAcoesTarefas([t]);
+  document.getElementById("excluir-tarefa").onclick = async () => {
+    if (!confirm(`Excluir a tarefa "${t.titulo}" e todo o seu histórico?`)) return;
+    try {
+      await api(`/tarefas/${id}`, { method: "DELETE" });
+      toast("Tarefa excluída", true);
+      location.hash = "#/tarefas";
+    } catch (e) {
+      toast(e.message);
+    }
+  };
+  $app.querySelectorAll("[data-hist]").forEach(
+    (el) => (el.onclick = () => ((filtroHistorico = el.dataset.hist), render()))
+  );
+  const form = document.getElementById("form-comentario");
+  const enviar = async () => {
+    const texto = form.texto.value.trim();
+    if (!texto) return form.texto.focus();
+    await acao(() => api(`/tarefas/${id}/comentarios`, { method: "POST", body: { texto } }), "Comentário adicionado");
+  };
+  form.onsubmit = (e) => (e.preventDefault(), enviar());
+  form.texto.onkeydown = (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) (e.preventDefault(), enviar());
+  };
+  $app.querySelectorAll("[data-excluir-comentario]").forEach(
+    (el) =>
+      (el.onclick = () => {
+        if (confirm("Excluir este comentário?"))
+          acao(
+            () => api(`/tarefas/${id}/comentarios/${el.dataset.excluirComentario}`, { method: "DELETE" }),
+            "Comentário excluído"
+          );
+      })
+  );
+}
+
 // ---------- Roteamento ----------
 
 async function render() {
@@ -790,7 +928,7 @@ async function render() {
   document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === secao));
   try {
     if (secao === "clientes") await (id ? viewCliente(id) : viewClientes());
-    else if (secao === "tarefas") await viewTarefas();
+    else if (secao === "tarefas") await (id ? viewTarefa(id) : viewTarefas());
     else await (id ? viewProjeto(id) : viewProjetos());
   } catch (e) {
     $app.innerHTML = `<div class="panel empty">Não foi possível carregar: ${esc(e.message)}</div>`;
