@@ -19,6 +19,7 @@ desenvolver no VS Code e publicar como **Databricks App**.
 
 ```
 tipos_servico 1───N cliente_servicos N───1 clientes 1───N projetos 1───N tarefas
+                                              clientes 1───N tarefas   (o projeto da tarefa é opcional)
 ```
 
 | Entidade | Campos principais |
@@ -27,7 +28,7 @@ tipos_servico 1───N cliente_servicos N───1 clientes 1───N proj
 | **Serviço contratado** | cliente, **tipo de serviço**, **valor**, data de início, ativo |
 | **Tipo de serviço** | catálogo (Tráfego Pago, SEO, Social Media, …) |
 | **Projeto** | cliente, nome, descrição, status, data de criação, prazo, data de finalização |
-| **Tarefa** | projeto, título, descrição, **status**, **prioridade**, **data de criação**, prazo, **data de finalização** |
+| **Tarefa** | cliente, projeto (opcional), título, descrição, **status**, **prioridade**, **data de criação**, prazo, **data de finalização** |
 
 - Status do projeto: `PLANEJAMENTO`, `EM_ANDAMENTO`, `FINALIZADO`
 - Status da tarefa: `A_FAZER`, `EM_ANDAMENTO`, `BLOQUEADA`, `FINALIZADA`
@@ -38,11 +39,12 @@ O cliente retorna também `valor_total_servicos` (soma dos serviços ativos) e o
 
 ## Regras de negócio
 
-1. Projeto pertence a um cliente existente e ativo; tarefa pertence a um projeto existente.
+1. Projeto pertence a um cliente existente e ativo. Tarefa pertence a um cliente e pode ou não
+   estar alocada em um projeto **desse mesmo cliente** (pode ser alocada/removida depois).
 2. **Projeto só é finalizado quando todas as suas tarefas estão `FINALIZADA`**
    (projeto sem tarefas também não finaliza). Caso contrário, a API responde `409` informando
    quantas tarefas estão pendentes.
-3. Projeto finalizado fica bloqueado: não aceita criar, alterar ou excluir tarefas.
+3. Projeto finalizado fica bloqueado: não aceita criar, alterar, mover ou excluir tarefas.
    Para mexer, use `POST /projetos/{id}/reabrir`.
 4. A **data de finalização da tarefa** é preenchida automaticamente ao mudar o status para
    `FINALIZADA` e limpa se a tarefa for reaberta. O mesmo vale para o projeto.
@@ -129,7 +131,8 @@ Os testes usam SQLite em memória e cobrem as regras acima.
 | POST | `/projetos/{id}/finalizar` | Finaliza (só se todas as tarefas estiverem finalizadas) |
 | POST | `/projetos/{id}/reabrir` | Reabre projeto finalizado |
 | GET/POST | `/projetos/{id}/tarefas` | Lista (filtros `status`, `prioridade`) / cria tarefa |
-| GET | `/tarefas` | Todas as tarefas com projeto e cliente (filtros `cliente_id`, `projeto_id`, `status`, `prioridade`) |
+| GET | `/tarefas` | Todas as tarefas com projeto e cliente (filtros `cliente_id`, `projeto_id`, `sem_projeto`, `status`, `prioridade`) |
+| POST | `/tarefas` | Cria tarefa para um cliente, com ou sem `projeto_id` |
 | GET/PATCH/DELETE | `/tarefas/{id}` | Consulta / altera / exclui tarefa |
 
 ## Estrutura

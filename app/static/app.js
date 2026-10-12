@@ -193,7 +193,7 @@ function cardTarefa(t, bloqueado, comOrigem = false) {
       ${
         comOrigem
           ? `<div class="origem"><a href="#/clientes/${t.cliente_id}">${esc(t.cliente_nome)}</a> ·
-             <a href="#/projetos/${t.projeto_id}">${esc(t.projeto_nome)}</a></div>`
+             ${t.projeto_id ? `<a href="#/projetos/${t.projeto_id}">${esc(t.projeto_nome)}</a>` : '<span class="muted">Sem projeto</span>'}</div>`
           : ""
       }
       ${t.descricao ? `<div class="desc">${esc(t.descricao)}</div>` : ""}
@@ -226,53 +226,77 @@ function formTarefa(t = {}) {
 }
 
 /** Nova tarefa escolhendo cliente e projeto (somente projetos não finalizados). */
+const SEM_PROJETO = "-"; // valor do seletor para "Sem projeto"
+
+/** Opções do seletor de projeto de um cliente: "Sem projeto" + projetos em aberto. */
+function opcoesProjeto(projetos, clienteId, selecionado) {
+  if (!clienteId) return vazio("Selecione o cliente primeiro");
+  const doCliente = projetos.filter(
+    (p) => p.cliente_id === clienteId && (p.status !== "FINALIZADO" || p.id === selecionado)
+  );
+  return (
+    (selecionado === undefined ? vazio("Selecione o projeto") : "") +
+    `<option value="${SEM_PROJETO}" ${selecionado === null ? "selected" : ""}>Sem projeto</option>` +
+    doCliente
+      .map((p) => `<option value="${p.id}" ${p.id === selecionado ? "selected" : ""}>${esc(p.nome)}</option>`)
+      .join("")
+  );
+}
+
+const projetoDoForm = (valor) => (valor === SEM_PROJETO ? null : valor);
+
+/** Nova tarefa: escolhe o cliente e, opcionalmente, um projeto em aberto desse cliente. */
 async function abrirNovaTarefa(pre = {}) {
   const [clientes, projetos] = await Promise.all([api("/clientes"), api("/projetos")]);
-  const abertos = projetos.filter((p) => p.status !== "FINALIZADO");
-  const comProjeto = clientes.filter((c) => abertos.some((p) => p.cliente_id === c.id));
-  if (!comProjeto.length) {
-    toast("Não há projetos em aberto. Crie um projeto antes de cadastrar tarefas.");
+  const ativos = clientes.filter((c) => c.ativo || c.id === pre.cliente_id);
+  if (!ativos.length) {
+    toast("Cadastre um cliente antes de criar tarefas.");
     return;
   }
-  const clienteInicial = comProjeto.some((c) => c.id === pre.cliente_id) ? pre.cliente_id : "";
-  const opcoesProjeto = (clienteId, selecionado) =>
-    clienteId
-      ? (selecionado ? "" : vazio("Selecione o projeto")) +
-        abertos
-          .filter((p) => p.cliente_id === clienteId)
-          .map((p) => `<option value="${p.id}" ${p.id === selecionado ? "selected" : ""}>${esc(p.nome)}</option>`)
-          .join("")
-      : vazio("Selecione o cliente primeiro");
+  const clienteInicial = ativos.some((c) => c.id === pre.cliente_id) ? pre.cliente_id : "";
 
   abrirFormulario(
     "Nova tarefa",
     `<div class="row-2">` +
       campo(
         "Cliente",
-        `<select name="cliente_id" required>${clienteInicial ? "" : vazio("Selecione o cliente")}${comProjeto
+        `<select name="cliente_id" required>${clienteInicial ? "" : vazio("Selecione o cliente")}${ativos
           .map((c) => `<option value="${c.id}" ${c.id === clienteInicial ? "selected" : ""}>${esc(c.nome)}</option>`)
           .join("")}</select>`
       ) +
       campo(
         "Projeto",
         `<select name="projeto_id" required ${clienteInicial ? "" : "disabled"}>${opcoesProjeto(
+          projetos,
           clienteInicial,
           pre.projeto_id
         )}</select>`
       ) +
       `</div>` +
       formTarefa(),
-    async ({ cliente_id, projeto_id, ...dados }) => {
-      await api(`/projetos/${projeto_id}/tarefas`, { method: "POST", body: dados });
+    async ({ projeto_id, ...dados }) => {
+      await api("/tarefas", { method: "POST", body: { ...dados, projeto_id: projetoDoForm(projeto_id) } });
       toast("Tarefa criada", true);
     },
     (form) => {
       const projeto = form.elements.namedItem("projeto_id");
       form.elements.namedItem("cliente_id").onchange = (e) => {
-        projeto.innerHTML = opcoesProjeto(e.target.value);
+        projeto.innerHTML = opcoesProjeto(projetos, e.target.value);
         projeto.disabled = false;
       };
     }
+  );
+}
+
+/** Editar tarefa: permite também alocar em outro projeto do cliente ou deixar sem projeto. */
+async function abrirEdicaoTarefa(t) {
+  const projetos = await api(`/projetos?cliente_id=${encodeURIComponent(t.cliente_id)}`);
+  abrirFormulario(
+    "Editar tarefa",
+    campo("Projeto", `<select name="projeto_id" required>${opcoesProjeto(projetos, t.cliente_id, t.projeto_id)}</select>`) +
+      formTarefa(t),
+    ({ projeto_id, ...dados }) =>
+      api(`/tarefas/${t.id}`, { method: "PATCH", body: { ...dados, projeto_id: projetoDoForm(projeto_id) } })
   );
 }
 
@@ -317,10 +341,7 @@ function ligarAcoesTarefas(tarefas) {
   );
   $app.querySelectorAll("[data-editar]").forEach(
     (el) =>
-      (el.onclick = () =>
-        abrirFormulario("Editar tarefa", formTarefa(porId[el.dataset.editar]), (d) =>
-          api(`/tarefas/${el.dataset.editar}`, { method: "PATCH", body: d })
-        ))
+      (el.onclick = () => abrirEdicaoTarefa(porId[el.dataset.editar]).catch((e) => toast(e.message)))
   );
   $app.querySelectorAll("[data-excluir]").forEach(
     (el) =>
@@ -638,7 +659,10 @@ function somarDias(dias) {
 
 async function viewTarefas() {
   const f = filtrosTarefas;
-  const qs = new URLSearchParams(Object.entries(f).filter(([k, v]) => v && k !== "prazo")).toString();
+  const params = Object.entries(f).filter(([k, v]) => v && k !== "prazo");
+  const qs = new URLSearchParams(
+    params.map(([k, v]) => (k === "projeto_id" && v === SEM_PROJETO ? ["sem_projeto", "true"] : [k, v]))
+  ).toString();
   const [clientes, projetos, todas] = await Promise.all([
     api("/clientes"),
     api("/projetos"),
@@ -679,7 +703,9 @@ async function viewTarefas() {
     </div>
     <div class="filters">
       <select id="ft-cliente"><option value="">Todos os clientes</option>${opt(clientes, f.cliente_id)}</select>
-      <select id="ft-projeto"><option value="">Todos os projetos</option>${opt(projetosFiltro, f.projeto_id)}</select>
+      <select id="ft-projeto"><option value="">Todos os projetos</option>
+        <option value="${SEM_PROJETO}" ${f.projeto_id === SEM_PROJETO ? "selected" : ""}>Sem projeto</option>
+        ${opt(projetosFiltro, f.projeto_id)}</select>
       <select id="ft-status"><option value="">Todos os status</option>${options(STATUS_TAREFA, f.status)}</select>
       <select id="ft-prioridade"><option value="">Todas as prioridades</option>${options(PRIORIDADE, f.prioridade)}</select>
       <select id="ft-prazo"><option value="">Todos os prazos</option>${options(PRAZOS, f.prazo)}</select>
@@ -701,7 +727,11 @@ async function viewTarefas() {
               return `<tr>
               <td><strong>${esc(t.titulo)}</strong>${t.descricao ? `<div class="small muted">${esc(t.descricao)}</div>` : ""}</td>
               <td class="nowrap"><a href="#/clientes/${t.cliente_id}">${esc(t.cliente_nome)}</a></td>
-              <td><a href="#/projetos/${t.projeto_id}">${esc(t.projeto_nome)}</a></td>
+              <td>${
+                t.projeto_id
+                  ? `<a href="#/projetos/${t.projeto_id}">${esc(t.projeto_nome)}</a>`
+                  : '<span class="muted">Sem projeto</span>'
+              }</td>
               <td>${badge(PRIORIDADE, t.prioridade)}</td>
               <td><select data-status="${t.id}" ${travada ? "disabled title='Projeto finalizado'" : ""}>${options(STATUS_TAREFA, t.status)}</select></td>
               <td class="nowrap ${estaAtrasada(t) ? "late" : ""}">${fmtData(t.data_prazo)}</td>

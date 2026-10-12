@@ -130,10 +130,13 @@ class TarefaRepository:
         projeto_id: str | None = None,
         status: str | None = None,
         prioridade: str | None = None,
+        sem_projeto: bool = False,
     ) -> list[Row]:
         filtros, params = [], {}
+        if sem_projeto:
+            filtros.append("t.projeto_id IS NULL")
         for coluna, valor in (
-            ("p.cliente_id", cliente_id),
+            ("t.cliente_id", cliente_id),
             ("t.projeto_id", projeto_id),
             ("t.status", status),
             ("t.prioridade", prioridade),
@@ -145,11 +148,10 @@ class TarefaRepository:
         where = f"WHERE {' AND '.join(filtros)}" if filtros else ""
         return self.db.fetch_all(
             f"""
-            SELECT t.*, p.nome AS projeto_nome, p.status AS projeto_status,
-                   c.id AS cliente_id, c.nome AS cliente_nome
+            SELECT t.*, p.nome AS projeto_nome, p.status AS projeto_status, c.nome AS cliente_nome
             FROM {self.db.table('tarefas')} t
-            JOIN {self.db.table('projetos')} p ON p.id = t.projeto_id
-            JOIN {self.db.table('clientes')} c ON c.id = p.cliente_id
+            JOIN {self.db.table('clientes')} c ON c.id = t.cliente_id
+            LEFT JOIN {self.db.table('projetos')} p ON p.id = t.projeto_id
             {where}
             ORDER BY {_ORDEM_PRIORIDADE.format(col='t.prioridade')}, t.data_prazo, t.data_criacao
             """,

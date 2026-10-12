@@ -16,6 +16,7 @@ from app.models import (
     StatusProjeto,
     StatusTarefa,
     Tarefa,
+    TarefaAvulsaCreate,
     TarefaCreate,
     TarefaDetalhada,
     TarefaUpdate,
@@ -233,24 +234,34 @@ class TarefaService:
     def __init__(self, db: Database):
         self.repo = TarefaRepository(db)
         self.projetos = ProjetoService(db)
+        self.clientes = ClienteRepository(db)
 
-    def _projeto_editavel(self, projeto_id: str) -> Projeto:
+    def _projeto_editavel(self, projeto_id: str | None) -> Projeto | None:
+        """Projeto finalizado bloqueia criar, alterar, mover ou excluir suas tarefas."""
+        if projeto_id is None:
+            return None
         projeto = self.projetos.obter(projeto_id)
         if projeto.status == StatusProjeto.FINALIZADO:
             raise RegraDeNegocioViolada(
-                "Projeto finalizado: suas tarefas não podem ser criadas, alteradas ou excluídas. "
-                "Reabra o projeto primeiro."
+                f"O projeto \"{projeto.nome}\" está finalizado: suas tarefas não podem ser criadas, "
+                "alteradas, movidas ou excluídas. Reabra o projeto primeiro."
             )
         return projeto
 
+    def _projeto_do_cliente(self, projeto_id: str | None, cliente_id: str) -> None:
+        projeto = self._projeto_editavel(projeto_id)
+        if projeto and projeto.cliente_id != cliente_id:
+            raise RegraDeNegocioViolada("O projeto escolhido pertence a outro cliente")
+
     def listar_todas(
-        self, cliente_id=None, projeto_id=None, status=None, prioridade=None
+        self, cliente_id=None, projeto_id=None, status=None, prioridade=None, sem_projeto=False
     ) -> list[TarefaDetalhada]:
         rows = self.repo.listar_todas(
             cliente_id,
             projeto_id,
             status.value if status else None,
             prioridade.value if prioridade else None,
+            sem_projeto,
         )
         return [TarefaDetalhada(**r) for r in rows]
 
@@ -268,12 +279,29 @@ class TarefaService:
         return Tarefa(**row)
 
     def criar(self, projeto_id: str, dados: TarefaCreate) -> Tarefa:
-        self._projeto_editavel(projeto_id)
+        """Cria a tarefa dentro de um projeto (o cliente é o do projeto)."""
+        projeto = self._projeto_editavel(projeto_id)
+        return self._inserir(projeto.cliente_id, projeto_id, dados)
+
+    def criar_avulsa(self, dados: TarefaAvulsaCreate) -> Tarefa:
+        """Cria a tarefa a partir do cliente, com ou sem projeto."""
+        cliente = self.clientes.obter(dados.cliente_id)
+        if not cliente:
+            raise NaoEncontrado(f"Cliente {dados.cliente_id} não encontrado")
+        self._projeto_do_cliente(dados.projeto_id, dados.cliente_id)
+        return self._inserir(
+            dados.cliente_id,
+            dados.projeto_id,
+            TarefaCreate(**dados.model_dump(exclude={"cliente_id", "projeto_id"})),
+        )
+
+    def _inserir(self, cliente_id: str, projeto_id: str | None, dados: TarefaCreate) -> Tarefa:
         agora = _agora()
         tarefa_id = _novo_id()
         self.repo.inserir(
             {
                 "id": tarefa_id,
+                "cliente_id": cliente_id,
                 "projeto_id": projeto_id,
                 **dados.model_dump(),
                 "status": dados.status.value,
@@ -289,6 +317,8 @@ class TarefaService:
         self._projeto_editavel(tarefa.projeto_id)
         valores = _campos_alterados(dados)
 
+        if "projeto_id" in valores and valores["projeto_id"] != tarefa.projeto_id:
+            self._projeto_do_cliente(valores["projeto_id"], tarefa.cliente_id)
         if "prioridade" in valores:
             valores["prioridade"] = valores["prioridade"].value
         novo_status = valores.get("status")

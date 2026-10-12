@@ -38,9 +38,11 @@ CREATE TABLE IF NOT EXISTS projetos (
   data_finalizacao  TEXT
 );
 
+-- A tarefa pertence a um cliente; o projeto é opcional.
 CREATE TABLE IF NOT EXISTS tarefas (
   id                TEXT PRIMARY KEY,
-  projeto_id        TEXT NOT NULL REFERENCES projetos(id),
+  cliente_id        TEXT NOT NULL REFERENCES clientes(id),
+  projeto_id        TEXT REFERENCES projetos(id),
   titulo            TEXT NOT NULL,
   descricao         TEXT,
   status            TEXT NOT NULL CHECK (status IN ('A_FAZER', 'EM_ANDAMENTO', 'BLOQUEADA', 'FINALIZADA')),

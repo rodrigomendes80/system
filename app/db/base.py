@@ -23,6 +23,9 @@ class Database(ABC):
     def close(self) -> None:
         pass
 
+    def on_startup(self) -> None:
+        """Executado quando a aplicação inicia (ex.: criar esquema local)."""
+
     def execute(self, sql: str, params: dict[str, Any] | None = None) -> None:
         self._run(sql, params or {}, fetch=False)
 

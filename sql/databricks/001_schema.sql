@@ -57,7 +57,8 @@ COMMENT 'Projetos (cada projeto pertence a um cliente)';
 
 CREATE TABLE IF NOT EXISTS {fq}.tarefas (
   id                STRING    NOT NULL,
-  projeto_id        STRING    NOT NULL,
+  cliente_id        STRING    NOT NULL,
+  projeto_id        STRING    COMMENT 'Opcional: tarefa pode não estar alocada em projeto',
   titulo            STRING    NOT NULL,
   descricao         STRING,
   status            STRING    NOT NULL,
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS {fq}.tarefas (
   data_prazo        DATE,
   data_finalizacao  TIMESTAMP,
   CONSTRAINT pk_tarefas PRIMARY KEY (id),
+  CONSTRAINT fk_tarefas_cliente FOREIGN KEY (cliente_id) REFERENCES {fq}.clientes,
   CONSTRAINT fk_tarefas_projeto FOREIGN KEY (projeto_id) REFERENCES {fq}.projetos
 ) USING DELTA
-COMMENT 'Tarefas (cada tarefa pertence a um projeto)';
+COMMENT 'Tarefas (pertencem a um cliente; o projeto é opcional)';

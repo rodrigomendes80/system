@@ -134,3 +134,78 @@ def test_listagem_geral_de_tarefas_com_projeto_e_cliente(client, cliente_id, pro
     so_cliente = client.get(f"/tarefas?cliente_id={cliente_id}").json()
     assert [t["titulo"] for t in so_cliente] == ["A"]
     assert len(client.get("/tarefas?prioridade=URGENTE").json()) == 1
+
+
+def test_tarefa_sem_projeto(client, cliente_id, projeto_id):
+    resp = client.post("/tarefas", json={"cliente_id": cliente_id, "titulo": "Avulsa", "prioridade": "ALTA"})
+    assert resp.status_code == 201
+    avulsa = resp.json()
+    assert avulsa["projeto_id"] is None
+    assert avulsa["cliente_id"] == cliente_id
+
+    listada = next(t for t in client.get("/tarefas").json() if t["id"] == avulsa["id"])
+    assert listada["projeto_nome"] is None
+    assert listada["cliente_nome"] == "Loja Exemplo"
+    assert [t["titulo"] for t in client.get("/tarefas?sem_projeto=true").json()] == ["Avulsa"]
+
+    # Não entra na contagem de nenhum projeto
+    assert client.get(f"/projetos/{projeto_id}").json()["total_tarefas"] == 0
+
+    # Depois pode ser alocada em um projeto do mesmo cliente...
+    alocada = client.patch(f"/tarefas/{avulsa['id']}", json={"projeto_id": projeto_id}).json()
+    assert alocada["projeto_id"] == projeto_id
+    assert client.get(f"/projetos/{projeto_id}").json()["total_tarefas"] == 1
+    # ...e removida dele
+    assert client.patch(f"/tarefas/{avulsa['id']}", json={"projeto_id": None}).json()["projeto_id"] is None
+
+
+def test_tarefa_com_projeto_de_outro_cliente_e_recusada(client, projeto_id):
+    outro = client.post("/clientes", json={"nome": "Outro"}).json()["id"]
+    resp = client.post("/tarefas", json={"cliente_id": outro, "projeto_id": projeto_id, "titulo": "X"})
+    assert resp.status_code == 409
+
+
+def test_nao_aloca_tarefa_em_projeto_finalizado(client, cliente_id, projeto_id):
+    client.post(f"/projetos/{projeto_id}/tarefas", json={"titulo": "T", "status": "FINALIZADA"})
+    client.post(f"/projetos/{projeto_id}/finalizar")
+    resp = client.post("/tarefas", json={"cliente_id": cliente_id, "projeto_id": projeto_id, "titulo": "X"})
+    assert resp.status_code == 409
+    avulsa = client.post("/tarefas", json={"cliente_id": cliente_id, "titulo": "Y"}).json()
+    assert client.patch(f"/tarefas/{avulsa['id']}", json={"projeto_id": projeto_id}).status_code == 409
+
+
+def test_migracao_de_base_antiga(tmp_path):
+    """Bases criadas quando a tarefa exigia projeto são migradas sem perder dados."""
+    import sqlite3
+
+    from app.db.sqlite import SQLiteDatabase
+
+    caminho = tmp_path / "antiga.db"
+    con = sqlite3.connect(caminho)
+    con.executescript(
+        """
+        CREATE TABLE clientes (id TEXT PRIMARY KEY, nome TEXT NOT NULL, documento TEXT, email TEXT,
+          telefone TEXT, data_cadastro TEXT NOT NULL, ativo INTEGER NOT NULL);
+        CREATE TABLE projetos (id TEXT PRIMARY KEY, cliente_id TEXT NOT NULL, nome TEXT NOT NULL,
+          descricao TEXT, status TEXT NOT NULL, data_criacao TEXT NOT NULL, data_prazo TEXT,
+          data_finalizacao TEXT);
+        CREATE TABLE tarefas (id TEXT PRIMARY KEY, projeto_id TEXT NOT NULL, titulo TEXT NOT NULL,
+          descricao TEXT, status TEXT NOT NULL, prioridade TEXT NOT NULL, data_criacao TEXT NOT NULL,
+          data_prazo TEXT, data_finalizacao TEXT);
+        INSERT INTO clientes VALUES ('c1', 'Cliente', NULL, NULL, NULL, '2026-01-01T00:00:00+00:00', 1);
+        INSERT INTO projetos VALUES ('p1', 'c1', 'Proj', NULL, 'EM_ANDAMENTO', '2026-01-01T00:00:00+00:00', NULL, NULL);
+        INSERT INTO tarefas VALUES ('t1', 'p1', 'Antiga', NULL, 'A_FAZER', 'MEDIA', '2026-01-01T00:00:00+00:00', NULL, NULL);
+        """
+    )
+    con.close()
+
+    db = SQLiteDatabase(str(caminho))
+    db.create_schema()
+    db.create_schema()  # idempotente
+    tarefa = db.fetch_one("SELECT * FROM tarefas WHERE id = 't1'")
+    assert tarefa["cliente_id"] == "c1" and tarefa["projeto_id"] == "p1"
+    db.execute(
+        "INSERT INTO tarefas (id, cliente_id, projeto_id, titulo, status, prioridade, data_criacao) "
+        "VALUES ('t2', 'c1', NULL, 'Sem projeto', 'A_FAZER', 'BAIXA', '2026-01-02T00:00:00+00:00')"
+    )
+    db.close()

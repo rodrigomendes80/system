@@ -17,6 +17,7 @@ def create_app(db=None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.db = db or create_database(get_settings())
+        app.state.db.on_startup()
         yield
         app.state.db.close()
 

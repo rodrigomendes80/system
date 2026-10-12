@@ -127,17 +127,28 @@ class TarefaCreate(BaseModel):
     data_prazo: date | None = None
 
 
+class TarefaAvulsaCreate(TarefaCreate):
+    """Tarefa criada a partir do cliente; o projeto é opcional."""
+
+    cliente_id: str
+    projeto_id: str | None = None
+
+
 class TarefaUpdate(BaseModel):
     titulo: str | None = Field(default=None, min_length=1, max_length=200)
     descricao: str | None = None
     status: StatusTarefa | None = None
     prioridade: Prioridade | None = None
     data_prazo: date | None = None
+    projeto_id: str | None = Field(
+        default=None, description="Aloca a tarefa em um projeto do mesmo cliente; null remove do projeto"
+    )
 
 
 class Tarefa(BaseModel):
     id: str
-    projeto_id: str
+    cliente_id: str
+    projeto_id: str | None
     titulo: str
     descricao: str | None
     status: StatusTarefa
@@ -150,7 +161,6 @@ class Tarefa(BaseModel):
 class TarefaDetalhada(Tarefa):
     """Tarefa com o projeto e o cliente a que pertence (listagem geral)."""
 
-    projeto_nome: str
-    projeto_status: StatusProjeto
-    cliente_id: str
+    projeto_nome: str | None
+    projeto_status: StatusProjeto | None
     cliente_nome: str
