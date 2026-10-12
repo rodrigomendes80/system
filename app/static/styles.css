@@ -55,7 +55,7 @@ main { max-width: 1280px; margin: 0 auto; padding: 24px 32px; }
 select, input, textarea { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; width: 100%; }
 textarea { min-height: 70px; resize: vertical; }
 
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
 .kpi, .card, .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
 .kpi { padding: 14px 16px; }
 .kpi .label { color: var(--muted); font-size: 12px; }
@@ -142,3 +142,11 @@ td select { padding: 3px 6px; font-size: 12px; width: auto; }
 .nowrap { white-space: nowrap; }
 @media (max-width: 720px) { .bar-row { grid-template-columns: 1fr; gap: 4px; } }
 tfoot th { color: var(--text); font-size: 14px; font-weight: 700; background: var(--surface-2); border-bottom: 0; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.segmented button { border: 0; background: transparent; color: var(--muted); padding: 7px 14px; font: inherit; font-weight: 500; cursor: pointer; }
+.segmented button + button { border-left: 1px solid var(--border); }
+.segmented button.on { background: var(--info-bg); color: var(--primary); }
+a.kpi.clickable { color: inherit; display: block; transition: border-color .15s; }
+a.kpi.clickable:hover { border-color: var(--primary); }
+.task .origem { font-size: 12px; margin-bottom: 4px; }
+a.kpi.clickable.on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }

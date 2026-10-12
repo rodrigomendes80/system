@@ -29,6 +29,7 @@ const fmtDataHora = (d) =>
   d ? new Date(d).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—";
 const hoje = () => new Date().toLocaleDateString("sv-SE"); // AAAA-MM-DD no fuso local
 const atrasada = (prazo, finalizado) => prazo && !finalizado && prazo < hoje();
+const vazio = (texto) => `<option value="" selected disabled hidden>${texto}</option>`;
 const options = (map, selected) =>
   Object.entries(map)
     .map(([k, [label]]) => `<option value="${k}" ${k === selected ? "selected" : ""}>${label}</option>`)
@@ -125,8 +126,9 @@ function formProjeto(clientes, p = {}) {
     .map((c) => `<option value="${c.id}" ${c.id === p.cliente_id ? "selected" : ""}>${esc(c.nome)}</option>`)
     .join("");
   const statusEditaveis = { PLANEJAMENTO: STATUS_PROJETO.PLANEJAMENTO, EM_ANDAMENTO: STATUS_PROJETO.EM_ANDAMENTO };
+  const placeholderCliente = p.cliente_id ? "" : vazio("Selecione o cliente");
   return (
-    (p.id ? "" : campo("Cliente", `<select name="cliente_id" required>${opcoesCliente}</select>`)) +
+    (p.id ? "" : campo("Cliente", `<select name="cliente_id" required>${placeholderCliente}${opcoesCliente}</select>`)) +
     campo("Nome", `<input name="nome" required value="${esc(p.nome)}">`) +
     campo("Descrição", `<textarea name="descricao">${esc(p.descricao)}</textarea>`) +
     `<div class="row-2">` +
@@ -182,12 +184,18 @@ async function viewProjetos() {
     });
 }
 
-function cardTarefa(t, bloqueado) {
+function cardTarefa(t, bloqueado, comOrigem = false) {
   const finalizada = t.status === "FINALIZADA";
   return `
     <div class="task" data-id="${t.id}" draggable="${!bloqueado}">
       ${badge(PRIORIDADE, t.prioridade)}
       <div class="title">${esc(t.titulo)}</div>
+      ${
+        comOrigem
+          ? `<div class="origem"><a href="#/clientes/${t.cliente_id}">${esc(t.cliente_nome)}</a> ·
+             <a href="#/projetos/${t.projeto_id}">${esc(t.projeto_nome)}</a></div>`
+          : ""
+      }
       ${t.descricao ? `<div class="desc">${esc(t.descricao)}</div>` : ""}
       <div class="dates">
         Criada: ${fmtDataHora(t.data_criacao)}<br>
@@ -207,7 +215,10 @@ function formTarefa(t = {}) {
     campo("Título", `<input name="titulo" required value="${esc(t.titulo)}">`) +
     campo("Descrição", `<textarea name="descricao">${esc(t.descricao)}</textarea>`) +
     `<div class="row-2">` +
-    campo("Prioridade", `<select name="prioridade">${options(PRIORIDADE, t.prioridade ?? "MEDIA")}</select>`) +
+    campo(
+      "Prioridade",
+      `<select name="prioridade" required>${t.id ? "" : vazio("Selecione")}${options(PRIORIDADE, t.prioridade)}</select>`
+    ) +
     campo("Status", `<select name="status">${options(STATUS_TAREFA, t.status ?? "A_FAZER")}</select>`) +
     `</div>` +
     campo("Prazo", `<input type="date" name="data_prazo" value="${esc(t.data_prazo)}">`)
@@ -223,23 +234,32 @@ async function abrirNovaTarefa(pre = {}) {
     toast("Não há projetos em aberto. Crie um projeto antes de cadastrar tarefas.");
     return;
   }
-  const clienteInicial = comProjeto.some((c) => c.id === pre.cliente_id) ? pre.cliente_id : comProjeto[0].id;
+  const clienteInicial = comProjeto.some((c) => c.id === pre.cliente_id) ? pre.cliente_id : "";
   const opcoesProjeto = (clienteId, selecionado) =>
-    abertos
-      .filter((p) => p.cliente_id === clienteId)
-      .map((p) => `<option value="${p.id}" ${p.id === selecionado ? "selected" : ""}>${esc(p.nome)}</option>`)
-      .join("");
+    clienteId
+      ? (selecionado ? "" : vazio("Selecione o projeto")) +
+        abertos
+          .filter((p) => p.cliente_id === clienteId)
+          .map((p) => `<option value="${p.id}" ${p.id === selecionado ? "selected" : ""}>${esc(p.nome)}</option>`)
+          .join("")
+      : vazio("Selecione o cliente primeiro");
 
   abrirFormulario(
     "Nova tarefa",
     `<div class="row-2">` +
       campo(
         "Cliente",
-        `<select name="cliente_id" required>${comProjeto
+        `<select name="cliente_id" required>${clienteInicial ? "" : vazio("Selecione o cliente")}${comProjeto
           .map((c) => `<option value="${c.id}" ${c.id === clienteInicial ? "selected" : ""}>${esc(c.nome)}</option>`)
           .join("")}</select>`
       ) +
-      campo("Projeto", `<select name="projeto_id" required>${opcoesProjeto(clienteInicial, pre.projeto_id)}</select>`) +
+      campo(
+        "Projeto",
+        `<select name="projeto_id" required ${clienteInicial ? "" : "disabled"}>${opcoesProjeto(
+          clienteInicial,
+          pre.projeto_id
+        )}</select>`
+      ) +
       `</div>` +
       formTarefa(),
     async ({ cliente_id, projeto_id, ...dados }) => {
@@ -248,9 +268,43 @@ async function abrirNovaTarefa(pre = {}) {
     },
     (form) => {
       const projeto = form.elements.namedItem("projeto_id");
-      form.elements.namedItem("cliente_id").onchange = (e) => (projeto.innerHTML = opcoesProjeto(e.target.value));
+      form.elements.namedItem("cliente_id").onchange = (e) => {
+        projeto.innerHTML = opcoesProjeto(e.target.value);
+        projeto.disabled = false;
+      };
     }
   );
+}
+
+/** Quadro kanban: uma coluna por status. */
+function quadroTarefas(tarefas, bloqueada, comOrigem = false) {
+  return `<div class="board">${Object.entries(STATUS_TAREFA)
+    .map(([status, [label]]) => {
+      const doStatus = tarefas.filter((t) => t.status === status);
+      return `<div class="column" data-coluna="${status}">
+        <h3><span>${label}</span><span>${doStatus.length}</span></h3>
+        ${doStatus.map((t) => cardTarefa(t, bloqueada(t), comOrigem)).join("") || '<p class="small muted" style="padding:0 4px">Nenhuma tarefa</p>'}
+      </div>`;
+    })
+    .join("")}</div>`;
+}
+
+/** Permite arrastar tarefas entre as colunas do quadro para mudar o status. */
+function ligarArrastar(porId) {
+  $app.querySelectorAll('.task[draggable="true"]').forEach(
+    (el) => (el.ondragstart = (e) => e.dataTransfer.setData("text/plain", el.dataset.id))
+  );
+  $app.querySelectorAll("[data-coluna]").forEach((col) => {
+    col.ondragover = (e) => (e.preventDefault(), col.classList.add("drop"));
+    col.ondragleave = () => col.classList.remove("drop");
+    col.ondrop = (e) => {
+      e.preventDefault();
+      col.classList.remove("drop");
+      const tid = e.dataTransfer.getData("text/plain");
+      if (tid && porId[tid] && porId[tid].status !== col.dataset.coluna)
+        acao(() => api(`/tarefas/${tid}`, { method: "PATCH", body: { status: col.dataset.coluna } }));
+    };
+  });
 }
 
 /** Liga os botões/seletores de status, edição e exclusão de tarefas na tela atual. */
@@ -321,21 +375,9 @@ async function viewProjeto(id) {
       <div class="progress big ${finalizado ? "done" : ""}"><span style="width:${p.percentual_concluido}%"></span></div>
       ${finalizado ? `<p class="small muted">Projeto finalizado: as tarefas ficam bloqueadas até ele ser reaberto.</p>` : ""}
     </div>
-    <div class="board">
-      ${Object.entries(STATUS_TAREFA)
-        .map(([status, [label]]) => {
-          const doStatus = tarefas.filter((t) => t.status === status);
-          return `<div class="column" data-coluna="${status}">
-            <h3><span>${label}</span><span>${doStatus.length}</span></h3>
-            ${doStatus.map((t) => cardTarefa(t, finalizado)).join("")}
-          </div>`;
-        })
-        .join("")}
-    </div>`;
+    ${quadroTarefas(tarefas, () => finalizado)}`;
 
-  const porId = ligarAcoesTarefas(tarefas);
-  const mudarStatus = (tid, status) =>
-    acao(() => api(`/tarefas/${tid}`, { method: "PATCH", body: { status } }));
+  ligarArrastar(ligarAcoesTarefas(tarefas));
 
   if (finalizado) {
     document.getElementById("reabrir").onclick = () =>
@@ -350,21 +392,6 @@ async function viewProjeto(id) {
         api(`/projetos/${id}`, { method: "PATCH", body: d })
       );
   }
-
-  // Arrastar e soltar entre colunas
-  $app.querySelectorAll('.task[draggable="true"]').forEach(
-    (el) => (el.ondragstart = (e) => e.dataTransfer.setData("text/plain", el.dataset.id))
-  );
-  $app.querySelectorAll("[data-coluna]").forEach((col) => {
-    col.ondragover = (e) => (e.preventDefault(), col.classList.add("drop"));
-    col.ondragleave = () => col.classList.remove("drop");
-    col.ondrop = (e) => {
-      e.preventDefault();
-      col.classList.remove("drop");
-      const tid = e.dataTransfer.getData("text/plain");
-      if (tid && porId[tid] && porId[tid].status !== col.dataset.coluna) mudarStatus(tid, col.dataset.coluna);
-    };
-  });
 }
 
 // ---------- Clientes ----------
@@ -594,18 +621,36 @@ async function viewCliente(id) {
 
 // ---------- Tarefas ----------
 
-const filtrosTarefas = { cliente_id: "", projeto_id: "", status: "", prioridade: "", atrasadas: false };
+const filtrosTarefas = { cliente_id: "", projeto_id: "", status: "", prioridade: "", prazo: "" };
+const PRAZOS = { hoje: ["Para hoje"], atrasadas: ["Atrasadas"], semana: ["Próximos 7 dias"] };
+
+// Modo de visualização lembrado no navegador (lista ou kanban)
+let visaoTarefas = "lista";
+try {
+  visaoTarefas = localStorage.getItem("visaoTarefas") || "lista";
+} catch {}
+
+function somarDias(dias) {
+  const d = new Date();
+  d.setDate(d.getDate() + dias);
+  return d.toLocaleDateString("sv-SE");
+}
 
 async function viewTarefas() {
   const f = filtrosTarefas;
-  const qs = new URLSearchParams(Object.entries(f).filter(([k, v]) => v && k !== "atrasadas")).toString();
+  const qs = new URLSearchParams(Object.entries(f).filter(([k, v]) => v && k !== "prazo")).toString();
   const [clientes, projetos, todas] = await Promise.all([
     api("/clientes"),
     api("/projetos"),
     api("/tarefas" + (qs ? `?${qs}` : "")),
   ]);
   const estaAtrasada = (t) => atrasada(t.data_prazo, t.status === "FINALIZADA");
-  const tarefas = f.atrasadas ? todas.filter(estaAtrasada) : todas;
+  const paraHoje = (t) => t.data_prazo === hoje() && t.status !== "FINALIZADA";
+  const naSemana = (t) =>
+    t.data_prazo && t.status !== "FINALIZADA" && t.data_prazo >= hoje() && t.data_prazo <= somarDias(7);
+  const filtroPrazo = { hoje: paraHoje, atrasadas: estaAtrasada, semana: naSemana }[f.prazo];
+  const tarefas = filtroPrazo ? todas.filter(filtroPrazo) : todas;
+  const bloqueada = (t) => t.projeto_status === "FINALIZADO";
   const conta = (status) => todas.filter((t) => t.status === status).length;
   const projetosFiltro = projetos.filter((p) => !f.cliente_id || p.cliente_id === f.cliente_id);
   const opt = (lista, sel) =>
@@ -614,15 +659,22 @@ async function viewTarefas() {
   $app.innerHTML = `
     <div class="page-head">
       <h1>Tarefas</h1>
-      <div class="toolbar"><button class="btn primary" id="nova-tarefa">+ Nova tarefa</button></div>
+      <div class="toolbar">
+        <div class="segmented" role="group" aria-label="Visualização">
+          <button class="${visaoTarefas === "lista" ? "on" : ""}" data-visao="lista">☰ Lista</button>
+          <button class="${visaoTarefas === "kanban" ? "on" : ""}" data-visao="kanban">▦ Kanban</button>
+        </div>
+        <button class="btn primary" id="nova-tarefa">+ Nova tarefa</button>
+      </div>
     </div>
     <div class="kpis">
+      <a class="kpi clickable ${f.prazo === "hoje" ? "on" : ""}" href="javascript:void 0" data-prazo="hoje"><div class="label">Para hoje</div>
+        <div class="value">${todas.filter(paraHoje).length}</div></a>
       <div class="kpi"><div class="label">A fazer</div><div class="value">${conta("A_FAZER")}</div></div>
       <div class="kpi"><div class="label">Em andamento</div><div class="value">${conta("EM_ANDAMENTO")}</div></div>
       <div class="kpi"><div class="label">Bloqueadas</div><div class="value">${conta("BLOQUEADA")}</div></div>
-      <div class="kpi"><div class="label">Atrasadas</div><div class="value ${todas.some(estaAtrasada) ? "late" : ""}">${
-        todas.filter(estaAtrasada).length
-      }</div></div>
+      <a class="kpi clickable ${f.prazo === "atrasadas" ? "on" : ""}" href="javascript:void 0" data-prazo="atrasadas"><div class="label">Atrasadas</div>
+        <div class="value ${todas.some(estaAtrasada) ? "late" : ""}">${todas.filter(estaAtrasada).length}</div></a>
       <div class="kpi"><div class="label">Finalizadas</div><div class="value">${conta("FINALIZADA")}</div></div>
     </div>
     <div class="filters">
@@ -630,9 +682,13 @@ async function viewTarefas() {
       <select id="ft-projeto"><option value="">Todos os projetos</option>${opt(projetosFiltro, f.projeto_id)}</select>
       <select id="ft-status"><option value="">Todos os status</option>${options(STATUS_TAREFA, f.status)}</select>
       <select id="ft-prioridade"><option value="">Todas as prioridades</option>${options(PRIORIDADE, f.prioridade)}</select>
-      <label class="check"><input type="checkbox" id="ft-atrasadas" ${f.atrasadas ? "checked" : ""}> Somente atrasadas</label>
+      <select id="ft-prazo"><option value="">Todos os prazos</option>${options(PRAZOS, f.prazo)}</select>
+      ${Object.values(f).some(Boolean) ? '<button class="btn ghost sm" id="ft-limpar">Limpar filtros</button>' : ""}
     </div>
-    <div class="panel table-wrap" style="padding:0">
+    ${
+      visaoTarefas === "kanban"
+        ? quadroTarefas(tarefas, bloqueada, true)
+        : `<div class="panel table-wrap" style="padding:0">
       <table>
         <thead><tr>
           <th>Tarefa</th><th>Cliente</th><th>Projeto</th><th>Prioridade</th><th>Status</th>
@@ -641,26 +697,27 @@ async function viewTarefas() {
         <tbody>${
           tarefas
             .map((t) => {
-              const bloqueada = t.projeto_status === "FINALIZADO";
+              const travada = bloqueada(t);
               return `<tr>
               <td><strong>${esc(t.titulo)}</strong>${t.descricao ? `<div class="small muted">${esc(t.descricao)}</div>` : ""}</td>
               <td class="nowrap"><a href="#/clientes/${t.cliente_id}">${esc(t.cliente_nome)}</a></td>
               <td><a href="#/projetos/${t.projeto_id}">${esc(t.projeto_nome)}</a></td>
               <td>${badge(PRIORIDADE, t.prioridade)}</td>
-              <td><select data-status="${t.id}" ${bloqueada ? "disabled title='Projeto finalizado'" : ""}>${options(STATUS_TAREFA, t.status)}</select></td>
+              <td><select data-status="${t.id}" ${travada ? "disabled title='Projeto finalizado'" : ""}>${options(STATUS_TAREFA, t.status)}</select></td>
               <td class="nowrap ${estaAtrasada(t) ? "late" : ""}">${fmtData(t.data_prazo)}</td>
               <td class="nowrap small">${fmtDataHora(t.data_criacao)}</td>
               <td class="nowrap small">${fmtDataHora(t.data_finalizacao)}</td>
               <td class="nowrap">
-                <button class="btn sm" data-editar="${t.id}" ${bloqueada ? "disabled" : ""}>Editar</button>
-                <button class="btn sm danger" data-excluir="${t.id}" ${bloqueada ? "disabled" : ""}>Excluir</button>
+                <button class="btn sm" data-editar="${t.id}" ${travada ? "disabled" : ""}>Editar</button>
+                <button class="btn sm danger" data-excluir="${t.id}" ${travada ? "disabled" : ""}>Excluir</button>
               </td>
             </tr>`;
             })
             .join("") || `<tr><td colspan="9" class="empty">Nenhuma tarefa encontrada.</td></tr>`
         }</tbody>
       </table>
-    </div>`;
+    </div>`
+    }`;
 
   const filtro = (campo, el) => (el.onchange = () => ((f[campo] = el.type === "checkbox" ? el.checked : el.value), render()));
   document.getElementById("ft-cliente").onchange = (e) => {
@@ -672,10 +729,26 @@ async function viewTarefas() {
   filtro("projeto_id", document.getElementById("ft-projeto"));
   filtro("status", document.getElementById("ft-status"));
   filtro("prioridade", document.getElementById("ft-prioridade"));
-  filtro("atrasadas", document.getElementById("ft-atrasadas"));
-  document.getElementById("nova-tarefa").onclick = () =>
-    abrirNovaTarefa({ cliente_id: f.cliente_id, projeto_id: f.projeto_id });
-  ligarAcoesTarefas(tarefas);
+  filtro("prazo", document.getElementById("ft-prazo"));
+  document.getElementById("ft-limpar")?.addEventListener("click", () => {
+    Object.keys(f).forEach((k) => (f[k] = ""));
+    render();
+  });
+  $app.querySelectorAll("[data-prazo]").forEach(
+    (el) => (el.onclick = () => ((f.prazo = f.prazo === el.dataset.prazo ? "" : el.dataset.prazo), render()))
+  );
+  $app.querySelectorAll("[data-visao]").forEach(
+    (el) =>
+      (el.onclick = () => {
+        visaoTarefas = el.dataset.visao;
+        try {
+          localStorage.setItem("visaoTarefas", visaoTarefas);
+        } catch {}
+        render();
+      })
+  );
+  document.getElementById("nova-tarefa").onclick = () => abrirNovaTarefa();
+  ligarArrastar(ligarAcoesTarefas(tarefas));
 }
 
 // ---------- Roteamento ----------
