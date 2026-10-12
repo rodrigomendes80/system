@@ -228,22 +228,21 @@ function formTarefa(t = {}) {
 /** Nova tarefa escolhendo cliente e projeto (somente projetos não finalizados). */
 const SEM_PROJETO = "-"; // valor do seletor para "Sem projeto"
 
-/** Opções do seletor de projeto de um cliente: "Sem projeto" + projetos em aberto. */
+/** Opções do seletor de projeto (opcional): "Sem projeto" + projetos em aberto do cliente. */
 function opcoesProjeto(projetos, clienteId, selecionado) {
-  if (!clienteId) return vazio("Selecione o cliente primeiro");
+  if (!clienteId) return `<option value="">Selecione o cliente primeiro</option>`;
   const doCliente = projetos.filter(
     (p) => p.cliente_id === clienteId && (p.status !== "FINALIZADO" || p.id === selecionado)
   );
   return (
-    (selecionado === undefined ? vazio("Selecione o projeto") : "") +
-    `<option value="${SEM_PROJETO}" ${selecionado === null ? "selected" : ""}>Sem projeto</option>` +
+    `<option value="">Sem projeto</option>` +
     doCliente
       .map((p) => `<option value="${p.id}" ${p.id === selecionado ? "selected" : ""}>${esc(p.nome)}</option>`)
       .join("")
   );
 }
 
-const projetoDoForm = (valor) => (valor === SEM_PROJETO ? null : valor);
+const projetoDoForm = (valor) => valor || null; // vazio = sem projeto
 
 /** Nova tarefa: escolhe o cliente e, opcionalmente, um projeto em aberto desse cliente. */
 async function abrirNovaTarefa(pre = {}) {
@@ -265,8 +264,8 @@ async function abrirNovaTarefa(pre = {}) {
           .join("")}</select>`
       ) +
       campo(
-        "Projeto",
-        `<select name="projeto_id" required ${clienteInicial ? "" : "disabled"}>${opcoesProjeto(
+        "Projeto <span class='muted'>(opcional)</span>",
+        `<select name="projeto_id" ${clienteInicial ? "" : "disabled"}>${opcoesProjeto(
           projetos,
           clienteInicial,
           pre.projeto_id
@@ -293,7 +292,10 @@ async function abrirEdicaoTarefa(t) {
   const projetos = await api(`/projetos?cliente_id=${encodeURIComponent(t.cliente_id)}`);
   abrirFormulario(
     "Editar tarefa",
-    campo("Projeto", `<select name="projeto_id" required>${opcoesProjeto(projetos, t.cliente_id, t.projeto_id)}</select>`) +
+    campo(
+      "Projeto <span class='muted'>(opcional)</span>",
+      `<select name="projeto_id">${opcoesProjeto(projetos, t.cliente_id, t.projeto_id)}</select>`
+    ) +
       formTarefa(t),
     ({ projeto_id, ...dados }) =>
       api(`/tarefas/${t.id}`, { method: "PATCH", body: { ...dados, projeto_id: projetoDoForm(projeto_id) } })
