@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 from pathlib import Path
 from typing import Any
@@ -20,10 +21,13 @@ class DatabricksDatabase(Database):
         catalog: str,
         schema: str,
         access_token: str = "",
+        warehouse_id: str = "",
     ):
-        if not server_hostname or not http_path:
+        if not http_path and warehouse_id:
+            http_path = f"/sql/1.0/warehouses/{warehouse_id}"
+        if not http_path:
             raise ValueError(
-                "Configure DATABRICKS_SERVER_HOSTNAME e DATABRICKS_HTTP_PATH no arquivo .env"
+                "Configure DATABRICKS_HTTP_PATH (ou DATABRICKS_WAREHOUSE_ID) no arquivo .env"
             )
         self._server_hostname = server_hostname
         self._http_path = http_path
@@ -35,15 +39,25 @@ class DatabricksDatabase(Database):
     def _connect(self):
         from databricks import sql
 
-        kwargs: dict[str, Any] = {
-            "server_hostname": self._server_hostname,
-            "http_path": self._http_path,
-        }
+        kwargs: dict[str, Any] = {"http_path": self._http_path}
         if self._access_token:
+            # Token pessoal (PAT) informado no .env
+            kwargs["server_hostname"] = self._server_hostname
             kwargs["access_token"] = self._access_token
+        elif os.getenv("DATABRICKS_CLIENT_ID"):
+            # Rodando como Databricks App: usa o service principal injetado pela plataforma
+            from databricks.sdk.core import Config
+
+            cfg = Config()
+            kwargs["server_hostname"] = self._server_hostname or cfg.host
+            kwargs["credentials_provider"] = lambda: cfg.authenticate
         else:
-            # Sem token: login OAuth pelo navegador (ideal para desenvolvimento no VS Code)
+            # Sem token: login OAuth pelo navegador (desenvolvimento local no VS Code)
+            if not self._server_hostname:
+                raise ValueError("Configure DATABRICKS_SERVER_HOSTNAME no arquivo .env")
+            kwargs["server_hostname"] = self._server_hostname
             kwargs["auth_type"] = "databricks-oauth"
+        kwargs["server_hostname"] = kwargs["server_hostname"].removeprefix("https://").rstrip("/")
         return sql.connect(**kwargs)
 
     def table(self, name: str) -> str:

@@ -7,11 +7,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    db_backend: Literal["databricks", "sqlite"] = "sqlite"
+    db_backend: Literal["databricks", "sqlite"] = "databricks"
     sqlite_path: str = "gestao_projetos.db"
 
     databricks_server_hostname: str = ""
     databricks_http_path: str = ""
+    # Preenchido automaticamente pelo Databricks Apps (recurso sql-warehouse no app.yaml)
+    databricks_warehouse_id: str = ""
     databricks_token: str = ""
     databricks_catalog: str = "main"
     databricks_schema: str = "gestao_projetos"

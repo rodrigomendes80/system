@@ -1,7 +1,18 @@
 # Gestão de Projetos e Tarefas
 
-API para gerenciar **Clientes → Projetos → Tarefas**, com persistência em **Databricks**
-(Delta Tables via SQL Warehouse). Feita em Python/FastAPI, pronta para desenvolver no VS Code.
+Sistema para gerenciar **Clientes → Projetos → Tarefas**, com persistência em **Databricks**
+(Delta Tables via SQL Warehouse). Backend em Python/FastAPI + interface web, pronto para
+desenvolver no VS Code e publicar como **Databricks App**.
+
+## Telas
+
+| Endereço | O que mostra |
+|---|---|
+| `/` → **Projetos** | Indicadores (clientes ativos, receita contratada, projetos em aberto/atrasados), filtros por cliente e status, cards com % de conclusão |
+| **Projeto** | Quadro (kanban) com as tarefas por status — arraste entre colunas ou troque no seletor —, prioridade, datas, botões Finalizar/Reabrir |
+| **Clientes** | Lista com serviços contratados e valor total; cadastro com vários serviços |
+| **Cliente** | Dados, serviços (contratar/encerrar) e projetos do cliente |
+| `/docs` | Documentação e testes da API |
 
 ## Modelo de dados
 
@@ -50,17 +61,18 @@ python -m scripts.init_db          # cria as tabelas e os tipos de serviço inic
 uvicorn app.main:app --reload
 ```
 
-Abra http://localhost:8000/docs para testar todos os endpoints pelo navegador (Swagger).
+Abra **http://localhost:8000** para usar o sistema, ou http://localhost:8000/docs para a API.
 No VS Code também há as configurações de execução **"API (uvicorn)"** e **"Inicializar banco"**
 (aba Run and Debug), e exemplos de chamadas em [`requests.http`](requests.http).
 
-### Desenvolvimento local x Databricks
+### Configuração do banco (`.env`)
 
-- `DB_BACKEND=sqlite` → usa um arquivo SQLite local (rápido para desenvolver, sem custo de warehouse).
-- `DB_BACKEND=databricks` → usa o Databricks. Preencha no `.env`:
+- `DB_BACKEND=databricks` (padrão) → usa o Databricks. Preencha:
   - `DATABRICKS_SERVER_HOSTNAME` e `DATABRICKS_HTTP_PATH`: em *SQL Warehouses → seu warehouse → Connection details*
   - `DATABRICKS_TOKEN`: token pessoal (PAT). Se ficar vazio, abre o login OAuth no navegador.
   - `DATABRICKS_CATALOG` / `DATABRICKS_SCHEMA`: onde as tabelas serão criadas (o schema é criado se não existir).
+
+- `DB_BACKEND=sqlite` → arquivo SQLite local, útil só para testar sem consumir o warehouse.
 
 O DDL do Databricks está em [`sql/databricks/`](sql/databricks/) e pode também ser executado
 manualmente no SQL Editor (substituindo `{fq}` por `catalogo.schema`).
@@ -68,6 +80,30 @@ manualmente no SQL Editor (substituindo `{fq}` por `catalogo.schema`).
 > **Sobre o Databricks:** em Delta Tables, `PRIMARY KEY` e `FOREIGN KEY` são apenas informativas
 > (exigem Unity Catalog e não bloqueiam dados inválidos); por isso a integridade é garantida pela
 > aplicação. As `CHECK` constraints de status, prioridade e valor **são** validadas pelo Delta.
+
+## Publicar como Databricks App
+
+O sistema roda dentro do Databricks, acessível pelo navegador para quem tem acesso ao workspace
+(login do próprio Databricks). A configuração está em [`app.yaml`](app.yaml).
+
+1. **Crie as tabelas** uma vez, a partir do VS Code, com o `.env` apontando para o Databricks:
+   `python -m scripts.init_db`
+2. **Crie o app** no workspace: *Compute → Apps → Create app → Custom*. Em *App resources*,
+   adicione um **SQL warehouse** com a chave `sql-warehouse` e permissão **Can use**.
+3. **Dê acesso às tabelas** ao service principal do app (o ID aparece na página do app), no SQL Editor:
+   ```sql
+   GRANT USE CATALOG ON CATALOG main TO `<id-do-service-principal>`;
+   GRANT USE SCHEMA, SELECT, MODIFY ON SCHEMA main.gestao_projetos TO `<id-do-service-principal>`;
+   ```
+4. **Envie o código e publique** (Databricks CLI):
+   ```bash
+   databricks sync . /Workspace/Users/<seu-email>/gestao-projetos
+   databricks apps deploy <nome-do-app> --source-code-path /Workspace/Users/<seu-email>/gestao-projetos
+   ```
+5. Abra a URL exibida na página do app.
+
+Se usar outro catálogo/schema, ajuste `DATABRICKS_CATALOG` e `DATABRICKS_SCHEMA` no `app.yaml`
+e nos comandos `GRANT`.
 
 ## Testes
 
@@ -99,6 +135,7 @@ Os testes usam SQLite em memória e cobrem as regras acima.
 ```
 app/
   main.py          # aplicação FastAPI
+  static/          # interface web (HTML, CSS, JS)
   models.py        # entidades, enums e validações
   services.py      # regras de negócio
   repositories.py  # SQL
@@ -107,5 +144,6 @@ app/
 sql/databricks/    # DDL Delta (tabelas + constraints)
 sql/sqlite/        # DDL local
 scripts/init_db.py # cria tabelas e dados iniciais
+app.yaml           # configuração do Databricks App
 tests/             # testes automatizados
 ```

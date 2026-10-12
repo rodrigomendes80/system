@@ -9,6 +9,7 @@ def create_database(settings: Settings) -> Database:
         return DatabricksDatabase(
             server_hostname=settings.databricks_server_hostname,
             http_path=settings.databricks_http_path,
+            warehouse_id=settings.databricks_warehouse_id,
             catalog=settings.databricks_catalog,
             schema=settings.databricks_schema,
             access_token=settings.databricks_token,

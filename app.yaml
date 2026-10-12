@@ -1,0 +1,20 @@
+# Configuração do Databricks Apps (https://docs.databricks.com/dev-tools/databricks-apps/)
+# Ao criar o app no workspace, adicione o recurso "SQL warehouse" com a chave "sql-warehouse"
+# e permissão "Can use". O ID do warehouse é injetado abaixo via valueFrom.
+command:
+  - uvicorn
+  - app.main:app
+  - --host
+  - 0.0.0.0
+  - --port
+  - "8000"
+
+env:
+  - name: DB_BACKEND
+    value: databricks
+  - name: DATABRICKS_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+  - name: DATABRICKS_CATALOG
+    value: main
+  - name: DATABRICKS_SCHEMA
+    value: gestao_projetos

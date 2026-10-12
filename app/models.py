@@ -1,8 +1,15 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
+
+# O Databricks devolve TIMESTAMP sem fuso (em UTC); marcamos como UTC para a
+# interface converter corretamente para o horário local.
+DataHora = Annotated[
+    datetime, AfterValidator(lambda v: v if v.tzinfo else v.replace(tzinfo=timezone.utc))
+]
 
 
 class StatusProjeto(str, Enum):
@@ -73,7 +80,7 @@ class ClienteUpdate(BaseModel):
 
 class Cliente(ClienteBase):
     id: str
-    data_cadastro: datetime
+    data_cadastro: DataHora
     ativo: bool
     servicos: list[ServicoContratado] = []
     valor_total_servicos: Decimal = Decimal("0")
@@ -102,9 +109,9 @@ class Projeto(BaseModel):
     nome: str
     descricao: str | None
     status: StatusProjeto
-    data_criacao: datetime
+    data_criacao: DataHora
     data_prazo: date | None
-    data_finalizacao: datetime | None
+    data_finalizacao: DataHora | None
     total_tarefas: int = 0
     tarefas_finalizadas: int = 0
     percentual_concluido: float = 0.0
@@ -135,6 +142,6 @@ class Tarefa(BaseModel):
     descricao: str | None
     status: StatusTarefa
     prioridade: Prioridade
-    data_criacao: datetime
+    data_criacao: DataHora
     data_prazo: date | None
-    data_finalizacao: datetime | None
+    data_finalizacao: DataHora | None

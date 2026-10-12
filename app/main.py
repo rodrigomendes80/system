@@ -1,12 +1,16 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.db import create_database
 from app.routers import clientes, projetos, tarefas
 from app.services import NaoEncontrado, RegraDeNegocioViolada
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 def create_app(db=None) -> FastAPI:
@@ -34,6 +38,14 @@ def create_app(db=None) -> FastAPI:
     app.include_router(clientes.router)
     app.include_router(projetos.router)
     app.include_router(tarefas.router)
+
+    # Interface web
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.get("/", include_in_schema=False)
+    def index():
+        return FileResponse(STATIC_DIR / "index.html")
+
     return app
 
 

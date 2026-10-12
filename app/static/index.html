@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gestão de Projetos</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/projetos">Gestão de Projetos</a>
+    <nav>
+      <a href="#/projetos" data-nav="projetos">Projetos</a>
+      <a href="#/clientes" data-nav="clientes">Clientes</a>
+      <a href="/docs" target="_blank" rel="noopener">API</a>
+    </nav>
+  </header>
+  <main id="app"><p class="muted">Carregando…</p></main>
+  <div id="toast" class="toast" role="alert" hidden></div>
+  <dialog id="modal">
+    <form id="modal-form">
+      <h2 id="modal-title"></h2>
+      <div id="modal-body"></div>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="modal-cancel">Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+  <script src="/static/app.js"></script>
+</body>
+</html>

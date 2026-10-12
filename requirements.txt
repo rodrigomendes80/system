@@ -3,3 +3,4 @@ uvicorn[standard]>=0.30
 pydantic>=2.7
 pydantic-settings>=2.3
 databricks-sql-connector>=3.4
+databricks-sdk>=0.30
