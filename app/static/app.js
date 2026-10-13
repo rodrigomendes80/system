@@ -7,10 +7,11 @@ const STATUS_PROJETO = {
   EM_ANDAMENTO: ["Em andamento", "b-warn"],
   FINALIZADO: ["Finalizado", "b-ok"],
 };
+// Cores do status da tarefa: A fazer = vermelho, Em andamento = azul, Bloqueada = laranja, Finalizada = verde
 const STATUS_TAREFA = {
-  A_FAZER: ["A fazer", ""],
-  EM_ANDAMENTO: ["Em andamento", "b-warn"],
-  BLOQUEADA: ["Bloqueada", "b-danger"],
+  A_FAZER: ["A fazer", "b-danger"],
+  EM_ANDAMENTO: ["Em andamento", "b-info"],
+  BLOQUEADA: ["Bloqueada", "b-warn"],
   FINALIZADA: ["Finalizada", "b-ok"],
 };
 const PRIORIDADE = {
@@ -381,7 +382,7 @@ function cardTarefa(t, bloqueado, comOrigem = false) {
         ${finalizada ? `<br>Finalizada: ${fmtDataHora(t.data_finalizacao)}` : ""}
       </div>
       <div class="row">
-        <select data-status="${t.id}" ${bloqueado ? "disabled" : ""}>${options(STATUS_TAREFA, t.status)}</select>
+        <select class="status-sel st-${t.status}" data-status="${t.id}" ${bloqueado ? "disabled" : ""}>${options(STATUS_TAREFA, t.status)}</select>
         <button class="btn sm" data-editar="${t.id}" ${bloqueado ? "disabled" : ""}>Editar</button>
         <button class="btn sm danger" data-excluir="${t.id}" ${bloqueado ? "disabled" : ""}>Excluir</button>
       </div>
@@ -955,7 +956,7 @@ async function viewTarefas() {
                   : '<span class="muted">Sem projeto</span>'
               }</td>
               <td>${badge(PRIORIDADE, t.prioridade)}</td>
-              <td><select data-status="${t.id}" ${travada ? "disabled title='Projeto finalizado'" : ""}>${options(STATUS_TAREFA, t.status)}</select></td>
+              <td><select class="status-sel st-${t.status}" data-status="${t.id}" ${travada ? "disabled title='Projeto finalizado'" : ""}>${options(STATUS_TAREFA, t.status)}</select></td>
               <td class="nowrap ${estaAtrasada(t) ? "late" : ""}">${fmtData(t.data_prazo)}</td>
               <td class="nowrap small">${fmtDataHora(t.data_criacao)}</td>
               <td class="nowrap small">${fmtDataHora(t.data_finalizacao)}</td>
@@ -1055,7 +1056,7 @@ async function viewTarefa(id) {
         </div>
       </div>
       <div class="toolbar">
-        <select data-status="${t.id}" ${travada ? "disabled" : ""}>${options(STATUS_TAREFA, t.status)}</select>
+        <select class="status-sel st-${t.status}" data-status="${t.id}" ${travada ? "disabled" : ""}>${options(STATUS_TAREFA, t.status)}</select>
         <button class="btn" data-editar="${t.id}" ${travada ? "disabled" : ""}>Editar</button>
         <button class="btn danger" id="excluir-tarefa" ${travada ? "disabled" : ""}>Excluir</button>
       </div>

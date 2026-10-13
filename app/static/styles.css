@@ -184,3 +184,12 @@ tr.grupo td a { color: var(--text); }
 .grupo-kanban h3 a { color: var(--text); }
 .filters #agrupar { margin-left: auto; }
 @media (max-width: 720px) { .board.cols-3 { grid-template-columns: repeat(3, 240px); } .filters #agrupar { margin-left: 0; } }
+
+/* Seletor de status da tarefa colorido conforme o status */
+select.status-sel { font-weight: 600; border-width: 1px; }
+select.status-sel option { background: var(--surface); color: var(--text); font-weight: 400; }
+select.st-A_FAZER { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+select.st-EM_ANDAMENTO { background: var(--info-bg); color: var(--info); border-color: var(--info); }
+select.st-BLOQUEADA { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
+select.st-FINALIZADA { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+select.status-sel:disabled { opacity: .75; }
