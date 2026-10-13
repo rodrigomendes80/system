@@ -303,3 +303,11 @@ def test_excluir_cliente_nao_afeta_outros(client, cliente_id):
     client.post(f"/projetos/{p}/tarefas", json={"titulo": "Fica"})
     client.delete(f"/clientes/{cliente_id}?cascata=true")
     assert [t["titulo"] for t in client.get("/tarefas").json()] == ["Fica"]
+
+
+def test_interface_nao_fica_em_cache(client):
+    for caminho in ("/", "/static/app.js", "/static/styles.css"):
+        resp = client.get(caminho)
+        assert resp.status_code == 200
+        assert resp.headers["cache-control"] == "no-cache"
+    assert "status-sel" in client.get("/static/app.js").text

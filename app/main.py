@@ -40,7 +40,15 @@ def create_app(db=None) -> FastAPI:
     app.include_router(projetos.router)
     app.include_router(tarefas.router)
 
-    # Interface web
+    # Interface web. "no-cache" faz o navegador sempre conferir se há versão nova das telas
+    # (evita continuar usando arquivos antigos depois de uma atualização).
+    @app.middleware("http")
+    async def _sem_cache_da_interface(request: Request, call_next):
+        resposta = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            resposta.headers["Cache-Control"] = "no-cache"
+        return resposta
+
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/", include_in_schema=False)
