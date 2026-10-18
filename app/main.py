@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.db import create_database
-from app.routers import clientes, projetos, tarefas
+from app.routers import clientes, tarefas
 from app.services import NaoEncontrado, RegraDeNegocioViolada
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -22,8 +22,8 @@ def create_app(db=None) -> FastAPI:
         app.state.db.close()
 
     app = FastAPI(
-        title="Gestão de Projetos e Tarefas",
-        description="Clientes → Projetos → Tarefas, com persistência em Databricks.",
+        title="Gestão de Tarefas",
+        description="Clientes e suas tarefas, com persistência em Databricks.",
         version="0.1.0",
         lifespan=lifespan,
     )
@@ -37,7 +37,6 @@ def create_app(db=None) -> FastAPI:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     app.include_router(clientes.router)
-    app.include_router(projetos.router)
     app.include_router(tarefas.router)
 
     # Interface web. "no-cache" faz o navegador sempre conferir se há versão nova das telas

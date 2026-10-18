@@ -8,7 +8,7 @@ from app.models import (
     RegistroHistorico,
     StatusTarefa,
     Tarefa,
-    TarefaAvulsaCreate,
+    TarefaCreate,
     TarefaDetalhada,
     TarefaUpdate,
 )
@@ -20,22 +20,20 @@ router = APIRouter(prefix="/tarefas", tags=["Tarefas"])
 @router.get("", response_model=list[TarefaDetalhada])
 def listar_todas_tarefas(
     cliente_id: str | None = None,
-    projeto_id: str | None = None,
     status: StatusTarefa | None = None,
     prioridade: Prioridade | None = None,
-    sem_projeto: bool = False,
     db: Database = Depends(get_db),
 ):
-    """Todas as tarefas, com projeto e cliente, ordenadas por prioridade e prazo."""
-    return TarefaService(db).listar_todas(cliente_id, projeto_id, status, prioridade, sem_projeto)
+    """Todas as tarefas, com o nome do cliente, ordenadas por prioridade e prazo."""
+    return TarefaService(db).listar_todas(cliente_id, status, prioridade)
 
 
 @router.post("", response_model=Tarefa, status_code=status.HTTP_201_CREATED)
 def criar_tarefa(
-    dados: TarefaAvulsaCreate, db: Database = Depends(get_db), usuario: str | None = Depends(get_usuario)
+    dados: TarefaCreate, db: Database = Depends(get_db), usuario: str | None = Depends(get_usuario)
 ):
-    """Cria uma tarefa para um cliente, alocada ou não em um projeto."""
-    return TarefaService(db).criar_avulsa(dados, usuario)
+    """Cria uma tarefa para um cliente."""
+    return TarefaService(db).criar(dados, usuario)
 
 
 @router.get("/{tarefa_id}", response_model=Tarefa)

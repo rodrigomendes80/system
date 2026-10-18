@@ -28,5 +28,12 @@ def cliente_id(client, tipo_servico_id):
 
 
 @pytest.fixture
-def projeto_id(client, cliente_id):
-    return client.post("/projetos", json={"cliente_id": cliente_id, "nome": "Black Friday"}).json()["id"]
+def nova_tarefa(client, cliente_id):
+    """Cria uma tarefa para o cliente padrão: nova_tarefa(titulo, **campos)."""
+
+    def _criar(titulo="Tarefa", **campos):
+        resp = client.post("/tarefas", json={"cliente_id": cliente_id, "titulo": titulo, **campos})
+        assert resp.status_code == 201, resp.text
+        return resp.json()
+
+    return _criar

@@ -1,26 +1,23 @@
-# Gestão de Projetos e Tarefas
+# Gestão de Tarefas
 
-Sistema para gerenciar **Clientes → Projetos → Tarefas**, com persistência em **Databricks**
+Sistema para gerenciar **Clientes** e suas **Tarefas**, com persistência em **Databricks**
 (Delta Tables via SQL Warehouse). Backend em Python/FastAPI + interface web, pronto para
 desenvolver no VS Code e publicar como **Databricks App**.
 
 ## Telas
 
-| Endereço | O que mostra |
+| Tela | O que mostra |
 |---|---|
-| `/` → **Projetos** | Indicadores (clientes ativos, receita contratada, projetos em aberto/atrasados), filtros por cliente e status, **lista ou kanban** (arraste para mudar o status; finalizar respeita a regra das tarefas), agrupamento por cliente |
-| **Projeto** | Quadro (kanban) com as tarefas por status — arraste entre colunas ou troque no seletor —, prioridade, datas, botões Finalizar/Reabrir |
-| **Clientes** | Totalizador (valor contratado, ticket médio, clientes e serviços ativos), valor por tipo de serviço, lista com total; cadastro com vários serviços |
-| **Tarefa** (clique no título) | Dados da tarefa e **histórico**: comentários para documentar o andamento + registros automáticos de mudanças (status, prioridade, prazo, projeto) |
-| **Tarefas** | Todas as tarefas em **lista ou kanban**, indicadores (para hoje, por status, atrasadas), filtros por cliente, projeto, status, prioridade e prazo (para hoje, atrasadas, próximos 7 dias), agrupamento por cliente ou projeto; nova tarefa escolhendo cliente e projeto |
-| **Cliente** | Dados, serviços (contratar/encerrar) e projetos do cliente |
+| **Tarefas** (inicial) | Todas as tarefas em **lista ou kanban**; indicadores (para hoje, por status, atrasadas); filtros por cliente, status, prioridade e prazo (para hoje, atrasadas, próximos 7 dias); agrupamento por cliente; nova tarefa escolhendo o cliente |
+| **Tarefa** (clique no título) | Dados da tarefa e **histórico**: comentários para documentar o andamento + registros automáticos de mudanças (status, prioridade, prazo, título, descrição) |
+| **Clientes** | Totalizador (valor contratado, ticket médio, clientes e serviços ativos), valor por tipo de serviço e lista com total |
+| **Cliente** | Dados, serviços contratados (contratar/encerrar) e tarefas do cliente |
 | `/docs` | Documentação e testes da API |
 
 ## Modelo de dados
 
 ```
-tipos_servico 1───N cliente_servicos N───1 clientes 1───N projetos 1───N tarefas
-                                              clientes 1───N tarefas   (o projeto da tarefa é opcional)
+tipos_servico 1───N cliente_servicos N───1 clientes 1───N tarefas 1───N tarefa_historico
 ```
 
 | Entidade | Campos principais |
@@ -28,38 +25,31 @@ tipos_servico 1───N cliente_servicos N───1 clientes 1───N proj
 | **Cliente** | nome, documento (CPF/CNPJ), e-mail, telefone, **data de cadastro**, ativo |
 | **Serviço contratado** | cliente, **tipo de serviço**, **valor**, data de início, ativo |
 | **Tipo de serviço** | catálogo (Tráfego Pago, SEO, Social Media, …) |
-| **Projeto** | cliente, nome, descrição, status, data de criação, prazo, data de finalização |
-| **Tarefa** | cliente, projeto (opcional), título, descrição, **status**, **prioridade**, **data de criação**, prazo, **data de finalização** |
+| **Tarefa** | cliente, título, descrição, **status**, **prioridade**, **data de criação**, prazo, **data de finalização** |
+| **Histórico da tarefa** | comentários do usuário e registros automáticos de mudanças |
 
-- Status do projeto: `PLANEJAMENTO`, `EM_ANDAMENTO`, `FINALIZADO`
-- Status da tarefa: `A_FAZER`, `EM_ANDAMENTO`, `BLOQUEADA`, `FINALIZADA`
+- Status da tarefa: `A_FAZER` (vermelho), `EM_ANDAMENTO` (azul), `BLOQUEADA` (laranja), `FINALIZADA` (verde)
 - Prioridade: `BAIXA`, `MEDIA`, `ALTA`, `URGENTE`
-
-O cliente retorna também `valor_total_servicos` (soma dos serviços ativos) e o projeto retorna
-`total_tarefas`, `tarefas_finalizadas` e `percentual_concluido`.
 
 ## Regras de negócio
 
-1. Projeto pertence a um cliente existente e ativo. Tarefa pertence a um cliente e pode ou não
-   estar alocada em um projeto **desse mesmo cliente** (pode ser alocada/removida depois).
-2. **Projeto só é finalizado quando todas as suas tarefas estão `FINALIZADA`**
-   (projeto sem tarefas também não finaliza). Caso contrário, a API responde `409` informando
-   quantas tarefas estão pendentes.
-3. Projeto finalizado fica bloqueado: não aceita criar, alterar, mover ou excluir tarefas.
-   Para mexer, use `POST /projetos/{id}/reabrir`.
-4. A **data de finalização da tarefa** é preenchida automaticamente ao mudar o status para
-   `FINALIZADA` e limpa se a tarefa for reaberta. O mesmo vale para o projeto.
-5. Cada tarefa tem um **histórico**: os comentários do usuário e os registros automáticos de
-   criação e mudanças. Registros automáticos não podem ser excluídos; comentários podem. Comentários
-   são permitidos mesmo em tarefas de projeto finalizado. No Databricks App o autor é preenchido
-   com o e-mail do usuário logado.
-6. **Excluir cliente** é definitivo. Sem projetos/tarefas, basta confirmar; com projetos ou tarefas,
-   a API exige `cascata=true` (a tela pede para digitar o nome do cliente) e apaga também serviços,
-   projetos, tarefas e o histórico delas. Para manter o histórico, prefira inativar.
-7. Serviços contratados não são apagados: ao encerrar, ficam inativos (histórico preservado)
+1. Toda tarefa pertence a um cliente existente.
+2. A **data de finalização da tarefa** é preenchida automaticamente ao mudar o status para
+   `FINALIZADA` e limpa se a tarefa for reaberta.
+3. Cada tarefa tem um **histórico**: comentários e registros automáticos de criação e mudanças.
+   Registros automáticos não podem ser excluídos; comentários podem. No Databricks App o autor é
+   preenchido com o e-mail do usuário logado.
+4. **Excluir cliente** é definitivo. Sem tarefas, basta confirmar; com tarefas, a API exige
+   `cascata=true` (a tela pede para digitar o nome do cliente) e apaga também as tarefas e o histórico.
+   Para manter o histórico, prefira inativar o cliente.
+5. Serviços contratados não são apagados: ao encerrar, ficam inativos (histórico preservado)
    e saem do valor total.
 
 As regras ficam em [`app/services.py`](app/services.py).
+
+> **Bancos criados em versões anteriores (com projetos):** ao iniciar, o sistema migra o banco
+> SQLite automaticamente: as tarefas são mantidas no cliente, o nome do projeto de cada tarefa fica
+> registrado no histórico dela e a tabela de projetos é removida.
 
 ## Como rodar no VS Code
 
@@ -122,7 +112,7 @@ e nos comandos `GRANT`.
 pytest
 ```
 
-Os testes usam SQLite em memória e cobrem as regras acima.
+Os testes usam SQLite em memória e cobrem as regras acima e a migração de bancos antigos.
 
 ## Endpoints
 
@@ -130,23 +120,16 @@ Os testes usam SQLite em memória e cobrem as regras acima.
 |---|---|---|
 | GET/POST | `/tipos-servico` | Catálogo de tipos de serviço |
 | GET/POST | `/clientes` | Lista (filtro `ativo`) / cadastra cliente (com serviços) |
-| GET/PATCH | `/clientes/{id}` | Consulta / altera cliente (inclusive inativar) |
-| GET | `/clientes/{id}/vinculos` | Quantos serviços, projetos, tarefas e comentários o cliente tem |
-| DELETE | `/clientes/{id}` | Exclui o cliente (`cascata=true` para apagar também projetos e tarefas) |
+| GET/PATCH/DELETE | `/clientes/{id}` | Consulta / altera / exclui cliente (`cascata=true` se tiver tarefas) |
+| GET | `/clientes/{id}/vinculos` | Quantos serviços, tarefas e comentários o cliente tem |
 | POST | `/clientes/{id}/servicos` | Contrata novo serviço |
 | DELETE | `/clientes/{id}/servicos/{servico_id}` | Encerra serviço (mantém histórico) |
-| GET | `/clientes/{id}/projetos` | Projetos do cliente |
-| GET/POST | `/projetos` | Lista (filtros `cliente_id`, `status`) / cria projeto |
-| GET/PATCH | `/projetos/{id}` | Consulta / altera projeto |
-| POST | `/projetos/{id}/finalizar` | Finaliza (só se todas as tarefas estiverem finalizadas) |
-| POST | `/projetos/{id}/reabrir` | Reabre projeto finalizado |
-| GET/POST | `/projetos/{id}/tarefas` | Lista (filtros `status`, `prioridade`) / cria tarefa |
-| GET | `/tarefas` | Todas as tarefas com projeto e cliente (filtros `cliente_id`, `projeto_id`, `sem_projeto`, `status`, `prioridade`) |
-| POST | `/tarefas` | Cria tarefa para um cliente, com ou sem `projeto_id` |
+| GET | `/tarefas` | Todas as tarefas com o cliente (filtros `cliente_id`, `status`, `prioridade`) |
+| POST | `/tarefas` | Cria tarefa para um cliente |
+| GET/PATCH/DELETE | `/tarefas/{id}` | Consulta / altera / exclui tarefa |
 | GET | `/tarefas/{id}/historico` | Comentários e registros automáticos da tarefa |
 | POST | `/tarefas/{id}/comentarios` | Adiciona comentário |
 | DELETE | `/tarefas/{id}/comentarios/{comentario_id}` | Exclui comentário |
-| GET/PATCH/DELETE | `/tarefas/{id}` | Consulta / altera / exclui tarefa |
 
 ## Estrutura
 
@@ -157,7 +140,7 @@ app/
   models.py        # entidades, enums e validações
   services.py      # regras de negócio
   repositories.py  # SQL
-  db/              # conexão Databricks e SQLite
+  db/              # conexão Databricks e SQLite (com migração automática local)
   routers/         # endpoints
 sql/databricks/    # DDL Delta (tabelas + constraints)
 sql/sqlite/        # DDL local

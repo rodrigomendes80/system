@@ -1,4 +1,4 @@
--- Esquema do sistema de gestão de projetos em Databricks (Delta Lake + Unity Catalog).
+-- Esquema do sistema de gestão de tarefas em Databricks (Delta Lake + Unity Catalog).
 -- {fq} é substituído pelo script de inicialização por `catalogo`.`schema`.
 --
 -- Observação: no Delta, PRIMARY KEY / FOREIGN KEY são *informativas* (não bloqueiam
@@ -41,24 +41,9 @@ CREATE TABLE IF NOT EXISTS {fq}.cliente_servicos (
 ) USING DELTA
 COMMENT 'Serviços contratados por cada cliente e seus valores';
 
-CREATE TABLE IF NOT EXISTS {fq}.projetos (
-  id                STRING    NOT NULL,
-  cliente_id        STRING    NOT NULL,
-  nome              STRING    NOT NULL,
-  descricao         STRING,
-  status            STRING    NOT NULL,
-  data_criacao      TIMESTAMP NOT NULL,
-  data_prazo        DATE,
-  data_finalizacao  TIMESTAMP,
-  CONSTRAINT pk_projetos PRIMARY KEY (id),
-  CONSTRAINT fk_projetos_cliente FOREIGN KEY (cliente_id) REFERENCES {fq}.clientes
-) USING DELTA
-COMMENT 'Projetos (cada projeto pertence a um cliente)';
-
 CREATE TABLE IF NOT EXISTS {fq}.tarefas (
   id                STRING    NOT NULL,
   cliente_id        STRING    NOT NULL,
-  projeto_id        STRING    COMMENT 'Opcional: tarefa pode não estar alocada em projeto',
   titulo            STRING    NOT NULL,
   descricao         STRING,
   status            STRING    NOT NULL,
@@ -67,10 +52,9 @@ CREATE TABLE IF NOT EXISTS {fq}.tarefas (
   data_prazo        DATE,
   data_finalizacao  TIMESTAMP,
   CONSTRAINT pk_tarefas PRIMARY KEY (id),
-  CONSTRAINT fk_tarefas_cliente FOREIGN KEY (cliente_id) REFERENCES {fq}.clientes,
-  CONSTRAINT fk_tarefas_projeto FOREIGN KEY (projeto_id) REFERENCES {fq}.projetos
+  CONSTRAINT fk_tarefas_cliente FOREIGN KEY (cliente_id) REFERENCES {fq}.clientes
 ) USING DELTA
-COMMENT 'Tarefas (pertencem a um cliente; o projeto é opcional)';
+COMMENT 'Tarefas (cada tarefa pertence a um cliente)';
 
 CREATE TABLE IF NOT EXISTS {fq}.tarefa_historico (
   id            STRING    NOT NULL,

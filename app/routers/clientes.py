@@ -6,13 +6,12 @@ from app.models import (
     Cliente,
     ClienteCreate,
     ClienteUpdate,
-    Projeto,
     ServicoContratadoCreate,
     TipoServico,
     TipoServicoCreate,
     VinculosCliente,
 )
-from app.services import ClienteService, ProjetoService, TipoServicoService
+from app.services import ClienteService, TipoServicoService
 
 router = APIRouter(tags=["Clientes"])
 
@@ -54,13 +53,13 @@ def adicionar_servico(cliente_id: str, dados: ServicoContratadoCreate, db: Datab
 
 @router.get("/clientes/{cliente_id}/vinculos", response_model=VinculosCliente)
 def vinculos_cliente(cliente_id: str, db: Database = Depends(get_db)):
-    """Quantos serviços, projetos, tarefas e comentários seriam apagados com o cliente."""
+    """Quantos serviços, tarefas e comentários seriam apagados com o cliente."""
     return ClienteService(db).vinculos(cliente_id)
 
 
 @router.delete("/clientes/{cliente_id}", status_code=status.HTTP_204_NO_CONTENT)
 def excluir_cliente(cliente_id: str, cascata: bool = False, db: Database = Depends(get_db)):
-    """Exclui o cliente de forma definitiva. Com projetos/tarefas, exige `cascata=true`."""
+    """Exclui o cliente de forma definitiva. Com tarefas, exige `cascata=true`."""
     ClienteService(db).excluir(cliente_id, cascata)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -69,9 +68,3 @@ def excluir_cliente(cliente_id: str, cascata: bool = False, db: Database = Depen
 def encerrar_servico(cliente_id: str, servico_id: str, db: Database = Depends(get_db)):
     """Encerra (inativa) um serviço contratado, mantendo o histórico."""
     return ClienteService(db).encerrar_servico(cliente_id, servico_id)
-
-
-@router.get("/clientes/{cliente_id}/projetos", response_model=list[Projeto])
-def listar_projetos_do_cliente(cliente_id: str, db: Database = Depends(get_db)):
-    ClienteService(db).obter(cliente_id)
-    return ProjetoService(db).listar(cliente_id=cliente_id)

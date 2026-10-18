@@ -11,15 +11,10 @@ from app.models import (
     VinculosCliente,
     ComentarioCreate,
     RegistroHistorico,
-    Projeto,
-    ProjetoCreate,
-    ProjetoUpdate,
     ServicoContratado,
     ServicoContratadoCreate,
-    StatusProjeto,
     StatusTarefa,
     Tarefa,
-    TarefaAvulsaCreate,
     TarefaCreate,
     TarefaDetalhada,
     TarefaUpdate,
@@ -29,7 +24,6 @@ from app.models import (
 )
 from app.repositories import (
     ClienteRepository,
-    ProjetoRepository,
     TarefaRepository,
     TipoServicoRepository,
 )
@@ -131,12 +125,12 @@ class ClienteService:
         return VinculosCliente(**{k: int(v or 0) for k, v in self.repo.contar_vinculos(cliente_id).items()})
 
     def excluir(self, cliente_id: str, cascata: bool = False) -> None:
-        """Exclui o cliente. Se ele tiver projetos ou tarefas, exige cascata=True,
-        que apaga também projetos, tarefas e o histórico delas."""
+        """Exclui o cliente. Se ele tiver tarefas, exige cascata=True,
+        que apaga também as tarefas e o histórico delas."""
         vinculos = self.vinculos(cliente_id)
-        if (vinculos.projetos or vinculos.tarefas) and not cascata:
+        if vinculos.tarefas and not cascata:
             raise RegraDeNegocioViolada(
-                f"O cliente possui {vinculos.projetos} projeto(s) e {vinculos.tarefas} tarefa(s). "
+                f"O cliente possui {vinculos.tarefas} tarefa(s). "
                 "Confirme a exclusão de tudo ou inative o cliente para manter o histórico."
             )
         self.repo.excluir_com_vinculos(cliente_id)
@@ -159,96 +153,6 @@ class ClienteService:
         )
 
 
-class ProjetoService:
-    def __init__(self, db: Database):
-        self.repo = ProjetoRepository(db)
-        self.clientes = ClienteRepository(db)
-
-    @staticmethod
-    def _montar(row: Row) -> Projeto:
-        total = int(row["total_tarefas"] or 0)
-        finalizadas = int(row["tarefas_finalizadas"] or 0)
-        percentual = round(100 * finalizadas / total, 1) if total else 0.0
-        return Projeto(
-            **{**row, "total_tarefas": total, "tarefas_finalizadas": finalizadas},
-            percentual_concluido=percentual,
-        )
-
-    def listar(self, cliente_id: str | None = None, status: StatusProjeto | None = None) -> list[Projeto]:
-        rows = self.repo.listar(cliente_id, status.value if status else None)
-        return [self._montar(r) for r in rows]
-
-    def obter(self, projeto_id: str) -> Projeto:
-        row = self.repo.obter(projeto_id)
-        if not row:
-            raise NaoEncontrado(f"Projeto {projeto_id} não encontrado")
-        return self._montar(row)
-
-    def criar(self, dados: ProjetoCreate) -> Projeto:
-        cliente = self.clientes.obter(dados.cliente_id)
-        if not cliente:
-            raise NaoEncontrado(f"Cliente {dados.cliente_id} não encontrado")
-        if not cliente["ativo"]:
-            raise RegraDeNegocioViolada("Não é possível criar projeto para cliente inativo")
-        if dados.status == StatusProjeto.FINALIZADO:
-            raise RegraDeNegocioViolada("Um projeto novo não pode nascer finalizado (não possui tarefas)")
-        projeto_id = _novo_id()
-        self.repo.inserir(
-            {
-                "id": projeto_id,
-                **dados.model_dump(),
-                "status": dados.status.value,
-                "data_criacao": _agora(),
-                "data_finalizacao": None,
-            }
-        )
-        return self.obter(projeto_id)
-
-    def atualizar(self, projeto_id: str, dados: ProjetoUpdate) -> Projeto:
-        projeto = self.obter(projeto_id)
-        valores = _campos_alterados(dados)
-        novo_status = valores.pop("status", None)
-
-        if valores and projeto.status == StatusProjeto.FINALIZADO:
-            raise RegraDeNegocioViolada("Projeto finalizado não pode ser alterado; reabra-o primeiro")
-        self.repo.atualizar(projeto_id, valores)
-
-        if novo_status == StatusProjeto.FINALIZADO:
-            return self.finalizar(projeto_id)
-        if novo_status is not None and novo_status != projeto.status:
-            self.repo.atualizar(
-                projeto_id, {"status": novo_status.value, "data_finalizacao": None}
-            )
-        return self.obter(projeto_id)
-
-    def finalizar(self, projeto_id: str) -> Projeto:
-        """REGRA: o projeto só finaliza quando TODAS as suas tarefas estão finalizadas."""
-        projeto = self.obter(projeto_id)
-        if projeto.status == StatusProjeto.FINALIZADO:
-            return projeto
-        if projeto.total_tarefas == 0:
-            raise RegraDeNegocioViolada("Projeto sem tarefas não pode ser finalizado")
-        pendentes = projeto.total_tarefas - projeto.tarefas_finalizadas
-        if pendentes > 0:
-            raise RegraDeNegocioViolada(
-                f"Projeto possui {pendentes} tarefa(s) não finalizada(s) "
-                f"de um total de {projeto.total_tarefas}"
-            )
-        self.repo.atualizar(
-            projeto_id, {"status": StatusProjeto.FINALIZADO.value, "data_finalizacao": _agora()}
-        )
-        return self.obter(projeto_id)
-
-    def reabrir(self, projeto_id: str) -> Projeto:
-        projeto = self.obter(projeto_id)
-        if projeto.status != StatusProjeto.FINALIZADO:
-            raise RegraDeNegocioViolada("Somente projetos finalizados podem ser reabertos")
-        self.repo.atualizar(
-            projeto_id, {"status": StatusProjeto.EM_ANDAMENTO.value, "data_finalizacao": None}
-        )
-        return self.obter(projeto_id)
-
-
 _ROTULO_STATUS = {
     StatusTarefa.A_FAZER: "A fazer",
     StatusTarefa.EM_ANDAMENTO: "Em andamento",
@@ -265,7 +169,6 @@ def _data_br(d) -> str:
 class TarefaService:
     def __init__(self, db: Database):
         self.repo = TarefaRepository(db)
-        self.projetos = ProjetoService(db)
         self.clientes = ClienteRepository(db)
 
     # ----- Histórico -----
@@ -290,7 +193,6 @@ class TarefaService:
         return [RegistroHistorico(**r) for r in self.repo.listar_historico(tarefa_id)]
 
     def comentar(self, tarefa_id: str, dados: ComentarioCreate, autor: str | None = None) -> RegistroHistorico:
-        """Comentários documentam a tarefa e são permitidos mesmo com o projeto finalizado."""
         self.obter(tarefa_id)
         texto = dados.texto.strip()
         if not texto:
@@ -306,7 +208,8 @@ class TarefaService:
             raise RegraDeNegocioViolada("Registros automáticos do histórico não podem ser excluídos")
         self.repo.excluir_registro(registro_id)
 
-    def _descrever_mudancas(self, antes: Tarefa, depois: Tarefa) -> list[str]:
+    @staticmethod
+    def _descrever_mudancas(antes: Tarefa, depois: Tarefa) -> list[str]:
         mudancas = []
         if antes.status != depois.status:
             mudancas.append(
@@ -319,50 +222,19 @@ class TarefaService:
             )
         if antes.data_prazo != depois.data_prazo:
             mudancas.append(f"Prazo alterado de {_data_br(antes.data_prazo)} para {_data_br(depois.data_prazo)}")
-        if antes.projeto_id != depois.projeto_id:
-            nome = lambda pid: self.projetos.obter(pid).nome if pid else "Sem projeto"  # noqa: E731
-            mudancas.append(f"Projeto alterado de {nome(antes.projeto_id)} para {nome(depois.projeto_id)}")
         if antes.titulo != depois.titulo:
             mudancas.append(f"Título alterado de \"{antes.titulo}\" para \"{depois.titulo}\"")
         if (antes.descricao or "") != (depois.descricao or ""):
             mudancas.append("Descrição atualizada")
         return mudancas
 
-    def _projeto_editavel(self, projeto_id: str | None) -> Projeto | None:
-        """Projeto finalizado bloqueia criar, alterar, mover ou excluir suas tarefas."""
-        if projeto_id is None:
-            return None
-        projeto = self.projetos.obter(projeto_id)
-        if projeto.status == StatusProjeto.FINALIZADO:
-            raise RegraDeNegocioViolada(
-                f"O projeto \"{projeto.nome}\" está finalizado: suas tarefas não podem ser criadas, "
-                "alteradas, movidas ou excluídas. Reabra o projeto primeiro."
-            )
-        return projeto
+    # ----- Tarefas -----
 
-    def _projeto_do_cliente(self, projeto_id: str | None, cliente_id: str) -> None:
-        projeto = self._projeto_editavel(projeto_id)
-        if projeto and projeto.cliente_id != cliente_id:
-            raise RegraDeNegocioViolada("O projeto escolhido pertence a outro cliente")
-
-    def listar_todas(
-        self, cliente_id=None, projeto_id=None, status=None, prioridade=None, sem_projeto=False
-    ) -> list[TarefaDetalhada]:
+    def listar_todas(self, cliente_id=None, status=None, prioridade=None) -> list[TarefaDetalhada]:
         rows = self.repo.listar_todas(
-            cliente_id,
-            projeto_id,
-            status.value if status else None,
-            prioridade.value if prioridade else None,
-            sem_projeto,
+            cliente_id, status.value if status else None, prioridade.value if prioridade else None
         )
         return [TarefaDetalhada(**r) for r in rows]
-
-    def listar(self, projeto_id: str, status=None, prioridade=None) -> list[Tarefa]:
-        self.projetos.obter(projeto_id)
-        rows = self.repo.listar(
-            projeto_id, status.value if status else None, prioridade.value if prioridade else None
-        )
-        return [Tarefa(**r) for r in rows]
 
     def obter(self, tarefa_id: str) -> Tarefa:
         row = self.repo.obter(tarefa_id)
@@ -370,34 +242,14 @@ class TarefaService:
             raise NaoEncontrado(f"Tarefa {tarefa_id} não encontrada")
         return Tarefa(**row)
 
-    def criar(self, projeto_id: str, dados: TarefaCreate, autor: str | None = None) -> Tarefa:
-        """Cria a tarefa dentro de um projeto (o cliente é o do projeto)."""
-        projeto = self._projeto_editavel(projeto_id)
-        return self._inserir(projeto.cliente_id, projeto_id, dados, autor)
-
-    def criar_avulsa(self, dados: TarefaAvulsaCreate, autor: str | None = None) -> Tarefa:
-        """Cria a tarefa a partir do cliente, com ou sem projeto."""
-        cliente = self.clientes.obter(dados.cliente_id)
-        if not cliente:
+    def criar(self, dados: TarefaCreate, autor: str | None = None) -> Tarefa:
+        if not self.clientes.obter(dados.cliente_id):
             raise NaoEncontrado(f"Cliente {dados.cliente_id} não encontrado")
-        self._projeto_do_cliente(dados.projeto_id, dados.cliente_id)
-        return self._inserir(
-            dados.cliente_id,
-            dados.projeto_id,
-            TarefaCreate(**dados.model_dump(exclude={"cliente_id", "projeto_id"})),
-            autor,
-        )
-
-    def _inserir(
-        self, cliente_id: str, projeto_id: str | None, dados: TarefaCreate, autor: str | None = None
-    ) -> Tarefa:
         agora = _agora()
         tarefa_id = _novo_id()
         self.repo.inserir(
             {
                 "id": tarefa_id,
-                "cliente_id": cliente_id,
-                "projeto_id": projeto_id,
                 **dados.model_dump(),
                 "status": dados.status.value,
                 "prioridade": dados.prioridade.value,
@@ -416,11 +268,8 @@ class TarefaService:
 
     def atualizar(self, tarefa_id: str, dados: TarefaUpdate, autor: str | None = None) -> Tarefa:
         tarefa = self.obter(tarefa_id)
-        self._projeto_editavel(tarefa.projeto_id)
         valores = _campos_alterados(dados)
 
-        if "projeto_id" in valores and valores["projeto_id"] != tarefa.projeto_id:
-            self._projeto_do_cliente(valores["projeto_id"], tarefa.cliente_id)
         if "prioridade" in valores:
             valores["prioridade"] = valores["prioridade"].value
         novo_status = valores.get("status")
@@ -439,6 +288,5 @@ class TarefaService:
         return atualizada
 
     def excluir(self, tarefa_id: str) -> None:
-        tarefa = self.obter(tarefa_id)
-        self._projeto_editavel(tarefa.projeto_id)
+        self.obter(tarefa_id)
         self.repo.excluir(tarefa_id)

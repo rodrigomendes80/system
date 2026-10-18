@@ -12,12 +12,6 @@ DataHora = Annotated[
 ]
 
 
-class StatusProjeto(str, Enum):
-    PLANEJAMENTO = "PLANEJAMENTO"
-    EM_ANDAMENTO = "EM_ANDAMENTO"
-    FINALIZADO = "FINALIZADO"
-
-
 class StatusTarefa(str, Enum):
     A_FAZER = "A_FAZER"
     EM_ANDAMENTO = "EM_ANDAMENTO"
@@ -87,7 +81,6 @@ class VinculosCliente(BaseModel):
     """O que será apagado junto com o cliente."""
 
     servicos: int
-    projetos: int
     tarefas: int
     comentarios: int
 
@@ -100,52 +93,15 @@ class Cliente(ClienteBase):
     valor_total_servicos: Decimal = Decimal("0")
 
 
-# ---------- Projetos ----------
-
-class ProjetoCreate(BaseModel):
-    cliente_id: str
-    nome: str = Field(min_length=1, max_length=200)
-    descricao: str | None = None
-    data_prazo: date | None = None
-    status: StatusProjeto = StatusProjeto.PLANEJAMENTO
-
-
-class ProjetoUpdate(BaseModel):
-    nome: str | None = Field(default=None, min_length=1, max_length=200)
-    descricao: str | None = None
-    data_prazo: date | None = None
-    status: StatusProjeto | None = None
-
-
-class Projeto(BaseModel):
-    id: str
-    cliente_id: str
-    nome: str
-    descricao: str | None
-    status: StatusProjeto
-    data_criacao: DataHora
-    data_prazo: date | None
-    data_finalizacao: DataHora | None
-    total_tarefas: int = 0
-    tarefas_finalizadas: int = 0
-    percentual_concluido: float = 0.0
-
-
 # ---------- Tarefas ----------
 
 class TarefaCreate(BaseModel):
+    cliente_id: str
     titulo: str = Field(min_length=1, max_length=200)
     descricao: str | None = None
     status: StatusTarefa = StatusTarefa.A_FAZER
     prioridade: Prioridade = Prioridade.MEDIA
     data_prazo: date | None = None
-
-
-class TarefaAvulsaCreate(TarefaCreate):
-    """Tarefa criada a partir do cliente; o projeto é opcional."""
-
-    cliente_id: str
-    projeto_id: str | None = None
 
 
 class TarefaUpdate(BaseModel):
@@ -154,15 +110,11 @@ class TarefaUpdate(BaseModel):
     status: StatusTarefa | None = None
     prioridade: Prioridade | None = None
     data_prazo: date | None = None
-    projeto_id: str | None = Field(
-        default=None, description="Aloca a tarefa em um projeto do mesmo cliente; null remove do projeto"
-    )
 
 
 class Tarefa(BaseModel):
     id: str
     cliente_id: str
-    projeto_id: str | None
     titulo: str
     descricao: str | None
     status: StatusTarefa
@@ -187,8 +139,6 @@ class RegistroHistorico(BaseModel):
 
 
 class TarefaDetalhada(Tarefa):
-    """Tarefa com o projeto e o cliente a que pertence (listagem geral)."""
+    """Tarefa com o nome do cliente (listagem geral)."""
 
-    projeto_nome: str | None
-    projeto_status: StatusProjeto | None
     cliente_nome: str

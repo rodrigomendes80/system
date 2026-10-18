@@ -27,22 +27,10 @@ CREATE TABLE IF NOT EXISTS cliente_servicos (
   ativo            INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS projetos (
-  id                TEXT PRIMARY KEY,
-  cliente_id        TEXT NOT NULL REFERENCES clientes(id),
-  nome              TEXT NOT NULL,
-  descricao         TEXT,
-  status            TEXT NOT NULL CHECK (status IN ('PLANEJAMENTO', 'EM_ANDAMENTO', 'FINALIZADO')),
-  data_criacao      TEXT NOT NULL,
-  data_prazo        TEXT,
-  data_finalizacao  TEXT
-);
-
--- A tarefa pertence a um cliente; o projeto é opcional.
+-- Cada tarefa pertence a um cliente.
 CREATE TABLE IF NOT EXISTS tarefas (
   id                TEXT PRIMARY KEY,
   cliente_id        TEXT NOT NULL REFERENCES clientes(id),
-  projeto_id        TEXT REFERENCES projetos(id),
   titulo            TEXT NOT NULL,
   descricao         TEXT,
   status            TEXT NOT NULL CHECK (status IN ('A_FAZER', 'EM_ANDAMENTO', 'BLOQUEADA', 'FINALIZADA')),

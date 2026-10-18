@@ -17,17 +17,14 @@ Content-Type: application/json
   ]
 }
 
-### Criar projeto para o cliente
-POST {{base}}/projetos
+### Criar tarefa para o cliente
+POST {{base}}/tarefas
 Content-Type: application/json
 
-{ "cliente_id": "COLE-O-ID-AQUI", "nome": "Campanha Black Friday", "data_prazo": "2026-11-28" }
+{ "cliente_id": "COLE-O-ID-AQUI", "titulo": "Configurar campanhas no Meta Ads", "prioridade": "ALTA", "data_prazo": "2026-11-10" }
 
-### Criar tarefa no projeto
-POST {{base}}/projetos/COLE-O-ID-AQUI/tarefas
-Content-Type: application/json
-
-{ "titulo": "Configurar campanhas no Meta Ads", "prioridade": "ALTA", "data_prazo": "2026-11-10" }
+### Listar tarefas de um cliente
+GET {{base}}/tarefas?cliente_id=COLE-O-ID-AQUI
 
 ### Finalizar tarefa
 PATCH {{base}}/tarefas/COLE-O-ID-AQUI
@@ -35,5 +32,8 @@ Content-Type: application/json
 
 { "status": "FINALIZADA" }
 
-### Finalizar projeto (409 se houver tarefa pendente)
-POST {{base}}/projetos/COLE-O-ID-AQUI/finalizar
+### Comentar na tarefa
+POST {{base}}/tarefas/COLE-O-ID-AQUI/comentarios
+Content-Type: application/json
+
+{ "texto": "Cliente aprovou os criativos." }
